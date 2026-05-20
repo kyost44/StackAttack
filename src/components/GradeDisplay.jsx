@@ -1,283 +1,342 @@
 /**
  * GradeDisplay.jsx
- * Renders the full team grade report: letter grade, component score bars,
- * expandable feedback accordions, strengths + weaknesses callout boxes.
+ * Grade report for the new BBM V+VI calibrated engine.
+ * Consumes: overallGrade, overallScore, *Score, *Feedback, *Detail,
+ *           achievements, topStrengths, topWeaknesses, bbm6Context
  */
 
 import { useState } from 'react';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Color helpers
 // ---------------------------------------------------------------------------
-
-/** Map a 0–100 score to a color class. */
-function scoreColor(score) {
-  if (score >= 80) return 'text-green-400';
-  if (score >= 65) return 'text-blue-400';
-  if (score >= 50) return 'text-yellow-400';
-  if (score >= 35) return 'text-orange-400';
+function scoreColor(s) {
+  if (s >= 80) return 'text-green-400';
+  if (s >= 65) return 'text-blue-400';
+  if (s >= 50) return 'text-yellow-400';
+  if (s >= 35) return 'text-orange-400';
   return 'text-red-400';
 }
-
-/** Map a 0-100 score to a bar fill color (Tailwind bg class). */
-function barColor(score) {
-  if (score >= 80) return 'bg-green-500';
-  if (score >= 65) return 'bg-blue-500';
-  if (score >= 50) return 'bg-yellow-500';
-  if (score >= 35) return 'bg-orange-500';
+function barColor(s) {
+  if (s >= 80) return 'bg-green-500';
+  if (s >= 65) return 'bg-blue-500';
+  if (s >= 50) return 'bg-yellow-500';
+  if (s >= 35) return 'bg-orange-500';
   return 'bg-red-500';
 }
-
-/** Map a letter grade to a Tailwind text color. */
-function gradeTextColor(letter) {
-  if (letter.startsWith('A')) return 'text-green-400';
-  if (letter.startsWith('B')) return 'text-blue-400';
-  if (letter.startsWith('C')) return 'text-yellow-400';
-  if (letter === 'D')          return 'text-orange-400';
+function gradeTextColor(g) {
+  if (g?.startsWith('A')) return 'text-green-400';
+  if (g?.startsWith('B')) return 'text-blue-400';
+  if (g?.startsWith('C')) return 'text-yellow-400';
+  if (g === 'D') return 'text-orange-400';
   return 'text-red-400';
 }
-
-function gradeRingColor(letter) {
-  if (letter.startsWith('A')) return 'ring-green-500/50 shadow-green-900/30';
-  if (letter.startsWith('B')) return 'ring-blue-500/50 shadow-blue-900/30';
-  if (letter.startsWith('C')) return 'ring-yellow-500/50 shadow-yellow-900/30';
-  if (letter === 'D')          return 'ring-orange-500/50 shadow-orange-900/30';
+function gradeRingColor(g) {
+  if (g?.startsWith('A')) return 'ring-green-500/50 shadow-green-900/30';
+  if (g?.startsWith('B')) return 'ring-blue-500/50 shadow-blue-900/30';
+  if (g?.startsWith('C')) return 'ring-yellow-500/50 shadow-yellow-900/30';
+  if (g === 'D') return 'ring-orange-500/50 shadow-orange-900/30';
   return 'ring-red-500/50 shadow-red-900/30';
 }
 
 // ---------------------------------------------------------------------------
-// Score bar component
+// Achievement badge row
 // ---------------------------------------------------------------------------
-function ScoreBar({ label, score, weight, description }) {
+function AchievementBadges({ achievements }) {
+  if (!achievements || achievements.length === 0) return null;
+  // Deduplicate by id
+  const seen = new Set();
+  const unique = achievements.filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true; });
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-white text-sm font-medium">{label}</span>
-          <span className="text-slate-500 text-xs">({Math.round(weight * 100)}%)</span>
-        </div>
-        <span className={`text-sm font-bold ${scoreColor(score)}`}>{score}</span>
-      </div>
-      <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${barColor(score)}`}
-          style={{ width: `${score}%` }}
-        />
-      </div>
-      {description && (
-        <p className="text-slate-500 text-xs">{description}</p>
-      )}
+    <div className="flex flex-wrap gap-2 mb-4">
+      {unique.map(a => (
+        <span
+          key={a.id}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
+                     bg-slate-700 border border-slate-600 text-slate-200"
+        >
+          <span>{a.icon}</span>
+          <span>{a.label}</span>
+        </span>
+      ))}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Accordion section
+// Accordion
 // ---------------------------------------------------------------------------
 function Accordion({ title, icon, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
-
   return (
     <div className="border border-slate-700 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-800/60
-                   hover:bg-slate-700/60 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 bg-slate-800/60 hover:bg-slate-700/60 transition-colors text-left"
       >
         <span className="flex items-center gap-2 text-sm font-semibold text-white">
-          <span>{icon}</span>
-          {title}
+          <span>{icon}</span>{title}
         </span>
-        <svg
-          className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
+        <svg className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      {open && (
-        <div className="px-4 py-3 bg-slate-900/60 space-y-2">
-          {children}
-        </div>
-      )}
+      {open && <div className="px-4 py-3 bg-slate-900/60 space-y-2">{children}</div>}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Construction detail accordion content
+// Feedback list (used inside accordions)
 // ---------------------------------------------------------------------------
-function ConstructionDetail({ raw }) {
-  if (!raw) return null;
-  const { wrRd6, wrRd10, wrAll, rbRd6, rbRd10, rbAll, qbAll, teAll, deltas, totalDelta } = raw;
-
+function FeedbackList({ items }) {
+  if (!items || items.length === 0) return null;
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {[
-          { label: 'WRs through Rd 6',  val: wrRd6 },
-          { label: 'WRs through Rd 10', val: wrRd10 },
-          { label: 'Total WRs',         val: wrAll },
-          { label: 'RBs through Rd 6',  val: rbRd6 },
-          { label: 'RBs through Rd 10', val: rbRd10 },
-          { label: 'Total RBs',         val: rbAll },
-          { label: 'Total QBs',         val: qbAll },
-          { label: 'Total TEs',         val: teAll },
-        ].map(({ label, val }) => (
-          <div key={label} className="flex justify-between bg-slate-800/60 rounded px-2 py-1">
-            <span className="text-slate-400">{label}</span>
-            <span className="text-white font-mono font-semibold">{val}</span>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-slate-700 pt-2">
-        <p className="text-xs text-slate-500 mb-2">Advance-rate deltas vs median bucket:</p>
-        <div className="space-y-1">
-          {deltas?.map(d => (
-            <div key={d.cat} className="flex justify-between text-xs">
-              <span className="text-slate-400">{d.cat}</span>
-              <span className={d.val >= 0 ? 'text-green-400' : 'text-red-400'}>
-                {d.val >= 0 ? '+' : ''}{d.val}pp
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-between text-xs font-semibold mt-2 pt-2 border-t border-slate-700">
-          <span className="text-slate-300">Total delta</span>
-          <span className={totalDelta >= 0 ? 'text-green-400' : 'text-red-400'}>
-            {totalDelta >= 0 ? '+' : ''}{totalDelta}pp
-          </span>
-        </div>
-      </div>
-    </div>
+    <ul className="space-y-1">
+      {items.map((f, i) => (
+        <li key={i} className="text-xs text-slate-400 flex gap-2">
+          <span className="text-slate-600 flex-shrink-0 mt-0.5">•</span>
+          <span>{f}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Value detail accordion content
+// Construction accordion content
 // ---------------------------------------------------------------------------
-function ValueDetail({ raw }) {
-  if (!raw) return null;
-  const { adpScore, capitalScore, capitalDetails } = raw;
-  const ADP_BUCKET_LABELS = {
-    reached_heavily: 'Reached (10+ picks early) — slight bonus',
-    reached_slightly: 'Reached (3–10 early) — optimal',
-    near_adp: 'Near ADP — neutral',
-    good_value: 'Good value (3–15 late) — penalty',
-    great_value: 'Great value (15+ late) — big penalty',
-  };
-
+function ConstructionDetail({ detail, feedback }) {
+  if (!detail) return null;
+  const { wrR6, wrR10, wrTotal, rbR6, rbR10, rbTotal, qbTotal, teTotal, totalDelta,
+    wrR6D, wrR10D, wrTotD, rbR6D, rbR10D, rbTotD, qbD, teD } = detail;
+  const cats = [
+    { label: 'WR through R6',  val: wrR6,    delta: wrR6D  },
+    { label: 'WR through R10', val: wrR10,   delta: wrR10D },
+    { label: 'WR total',       val: wrTotal, delta: wrTotD },
+    { label: 'RB through R6',  val: rbR6,    delta: rbR6D  },
+    { label: 'RB through R10', val: rbR10,   delta: rbR10D },
+    { label: 'RB total',       val: rbTotal, delta: rbTotD },
+    { label: 'QB total',       val: qbTotal, delta: qbD    },
+    { label: 'TE total',       val: teTotal, delta: teD    },
+  ];
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-slate-800/60 rounded px-3 py-2">
-          <p className="text-slate-400">ADP Efficiency</p>
-          <p className={`text-lg font-bold ${scoreColor(adpScore)}`}>{adpScore}</p>
-        </div>
-        <div className="bg-slate-800/60 rounded px-3 py-2">
-          <p className="text-slate-400">Capital Allocation</p>
-          <p className={`text-lg font-bold ${scoreColor(capitalScore)}`}>{capitalScore}</p>
-        </div>
-      </div>
-
-      <div className="text-xs text-slate-500 bg-slate-800/40 rounded p-2">
-        <span className="text-yellow-400 font-medium">⚡ Counterintuitive finding: </span>
-        BBM II/III data shows teams that reached slightly (3–10 picks early) advanced at +3.3pp vs baseline.
-        Heavy value-hunting underperformed by −9.7pp. ADP reflects player quality — reaching = buying the known-good players.
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-xs font-semibold text-slate-400">Positional Capital</p>
-        {capitalDetails?.map(c => (
-          <div key={c.pos} className="flex items-center justify-between text-xs">
-            <span className="text-slate-300 w-8">{c.pos}</span>
-            <span className="text-slate-400 flex-1 px-2">{c.pct}% of draft ({c.quartile})</span>
-            <span className={c.delta >= 0 ? 'text-green-400' : 'text-red-400'}>
-              {c.delta >= 0 ? '+' : ''}{c.delta}pp
+      <div className="grid grid-cols-2 gap-1 text-xs">
+        {cats.map(c => (
+          <div key={c.label} className="flex justify-between bg-slate-800/60 rounded px-2 py-1">
+            <span className="text-slate-400">{c.label}</span>
+            <span className="font-mono text-white font-semibold">{c.val}</span>
+            <span className={`font-mono text-xs ${c.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {c.delta >= 0 ? '+' : ''}{c.delta?.toFixed(2)}
             </span>
           </div>
         ))}
       </div>
+      <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-700">
+        <span className="text-slate-300">Total delta</span>
+        <span className={totalDelta >= 0 ? 'text-green-400' : 'text-red-400'}>
+          {totalDelta >= 0 ? '+' : ''}{totalDelta?.toFixed(2)}pp
+        </span>
+      </div>
+      <FeedbackList items={feedback} />
+      <p className="text-xs text-slate-600 italic border-t border-slate-800 pt-2">
+        Construction weights calibrated from BBM V &amp; VI ground-truth finalist data (1,078 finalist rosters).
+      </p>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Stack detail accordion content
+// Value accordion content
 // ---------------------------------------------------------------------------
-function StackDetail({ raw }) {
-  if (!raw) return null;
-  const { noQB, stackNotes, bonuses, primaryQB, qbTier, stackCount, week17Game } = raw;
+function ValueDetail({ detail, feedback }) {
+  if (!detail) return null;
+  const { adpScore, capitalScore, capitalPct, qbQuartile, rbQuartile, wrQuartile, teQuartile } = detail;
+  const capitals = [
+    { pos: 'QB', pct: capitalPct?.QB, q: qbQuartile },
+    { pos: 'RB', pct: capitalPct?.RB, q: rbQuartile },
+    { pos: 'WR', pct: capitalPct?.WR, q: wrQuartile },
+    { pos: 'TE', pct: capitalPct?.TE, q: teQuartile },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-slate-800/60 rounded px-3 py-2">
+          <p className="text-slate-400">ADP Efficiency (60%)</p>
+          <p className={`text-lg font-bold ${scoreColor(adpScore ?? 50)}`}>{adpScore ?? '—'}</p>
+        </div>
+        <div className="bg-slate-800/60 rounded px-3 py-2">
+          <p className="text-slate-400">Capital Alloc (40%)</p>
+          <p className={`text-lg font-bold ${scoreColor(capitalScore ?? 50)}`}>{capitalScore ?? '—'}</p>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs font-semibold text-slate-400">Positional Capital</p>
+        {capitals.map(c => (
+          <div key={c.pos} className="flex items-center justify-between text-xs">
+            <span className="text-slate-300 w-8">{c.pos}</span>
+            <span className="text-slate-400 flex-1 px-2">{c.pct}% ({c.q?.l ?? '—'})</span>
+            <span className={c.q?.d >= 0 ? 'text-green-400' : 'text-red-400'}>
+              {c.q?.d >= 0 ? '+' : ''}{c.q?.d}pp
+            </span>
+          </div>
+        ))}
+      </div>
+      <FeedbackList items={feedback} />
+      <p className="text-xs text-slate-600 italic border-t border-slate-800 pt-2">
+        ADP efficiency calibrated from BBM II-IV. BBM V/VI public datasets had null ADP.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stack accordion content
+// ---------------------------------------------------------------------------
+function StackDetail({ detail, feedback }) {
+  if (!detail) return null;
+  const { topQbTier, qbTierBonus, teamStackBonus, w17GameBonus, w16GameBonus, w15GameBonus,
+    w17GameStackDetails, w16StackDetails, w15StackDetails, bothQbsStacked, teamStackDetails } = detail;
 
   return (
-    <div className="space-y-2">
-      {noQB && (
-        <p className="text-red-400 text-xs font-medium">⚠️ No QB on roster</p>
+    <div className="space-y-3">
+      {bothQbsStacked && (
+        <div className="bg-orange-950/40 border border-orange-700/40 rounded px-3 py-2 text-xs text-orange-300 font-semibold">
+          🔥 Both QBs game-stacked W17 — the $31.28 EV construct
+        </div>
       )}
-      {!noQB && bonuses && (
-        <div className="grid grid-cols-4 gap-1 text-xs">
-          {[
-            { label: 'Base',      val: bonuses.base },
-            { label: 'QB Tier',   val: `+${bonuses.qbBonus}` },
-            { label: 'Team Stack',val: `+${bonuses.teamStackBonus}` },
-            { label: 'Game Stack',val: `+${bonuses.gameStackBonus}` },
-          ].map(({ label, val }) => (
-            <div key={label} className="bg-slate-800/60 rounded px-2 py-1.5 text-center">
-              <p className="text-slate-500 text-xs">{label}</p>
-              <p className="text-white font-semibold">{val}</p>
+
+      <div className="grid grid-cols-4 gap-1 text-xs">
+        {[
+          { label: 'QB Tier',    val: `+${qbTierBonus ?? 0}` },
+          { label: 'Team Stack', val: `+${teamStackBonus ?? 0}` },
+          { label: 'W17 Stack',  val: `+${w17GameBonus ?? 0}` },
+          { label: 'W15/16',     val: `+${(w16GameBonus ?? 0) + (w15GameBonus ?? 0)}` },
+        ].map(({ label, val }) => (
+          <div key={label} className="bg-slate-800/60 rounded px-2 py-1.5 text-center">
+            <p className="text-slate-500">{label}</p>
+            <p className="text-white font-semibold">{val}</p>
+          </div>
+        ))}
+      </div>
+
+      {teamStackDetails?.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-400">Team Stacks</p>
+          {teamStackDetails.map((s, i) => (
+            <p key={i} className="text-xs text-slate-400">
+              {s.qb} ({s.team}) + {s.partners.join(', ')}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {w17GameStackDetails?.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-400">Week 17 Game Stacks</p>
+          {w17GameStackDetails.map((g, i) => (
+            <div key={i} className="text-xs bg-slate-800/40 rounded px-2 py-1.5">
+              <div className="flex items-center gap-2">
+                <span className={`font-bold ${g.tier === 'S' ? 'text-green-400' : g.tier === 'A' ? 'text-blue-400' : g.tier === 'B' ? 'text-yellow-400' : 'text-slate-400'}`}>
+                  [{g.tier}]
+                </span>
+                <span className="text-white font-medium">{g.game}</span>
+                <span className="text-slate-500">{g.window}</span>
+                <span className="ml-auto text-green-400 font-semibold">+{g.bonus}</span>
+              </div>
+              {g.t1.length > 0 && <p className="text-slate-400 mt-0.5 pl-1">Side 1: {g.t1.join(', ')}</p>}
+              {g.t2.length > 0 && <p className="text-slate-400 pl-1">Side 2: {g.t2.join(', ')}</p>}
+              {g.both && <p className="text-green-400/70 pl-1">✓ Bring-back detected</p>}
             </div>
           ))}
         </div>
       )}
-      <div className="space-y-1">
-        {stackNotes?.map((note, i) => (
-          <p key={i} className="text-xs text-slate-400">• {note}</p>
-        ))}
-      </div>
+
+      {w16StackDetails?.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-400">Week 16 Game Stacks</p>
+          {w16StackDetails.map((g, i) => (
+            <div key={i} className="text-xs text-slate-400 flex justify-between bg-slate-800/30 rounded px-2 py-1">
+              <span>{g.game} [{g.tier}] {g.window}</span>
+              <span className="text-green-400">+{g.bonus}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {w15StackDetails?.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-400">Week 15 Game Stacks</p>
+          {w15StackDetails.map((g, i) => (
+            <div key={i} className="text-xs text-slate-400 flex justify-between bg-slate-800/30 rounded px-2 py-1">
+              <span>{g.game} [{g.tier}] {g.window}</span>
+              <span className="text-green-400">+{g.bonus}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <FeedbackList items={feedback} />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Risk detail accordion content
+// Risk accordion content
 // ---------------------------------------------------------------------------
-function RiskDetail({ raw }) {
-  if (!raw) return null;
-  const { riskNotes, base, totalPenalty, totalBonus } = raw;
+function RiskDetail({ feedback }) {
+  return <FeedbackList items={feedback} />;
+}
 
+// ---------------------------------------------------------------------------
+// BBM6 chalk alert
+// ---------------------------------------------------------------------------
+function BBM6ChalkAlert({ bbm6Context }) {
+  if (!bbm6Context?.highOwnershipPlayers?.length) return null;
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-1 text-xs">
-        {[
-          { label: 'Base', val: base },
-          { label: 'Penalties', val: totalPenalty, colored: true },
-          { label: 'Bonuses', val: `+${totalBonus}`, colored: true, positive: true },
-        ].map(({ label, val, colored, positive }) => (
-          <div key={label} className="bg-slate-800/60 rounded px-2 py-1.5 text-center">
-            <p className="text-slate-500 text-xs">{label}</p>
-            <p className={`font-semibold ${colored ? (positive ? 'text-green-400' : 'text-red-400') : 'text-white'}`}>
-              {val}
-            </p>
-          </div>
+    <div className="bg-yellow-950/30 border border-yellow-700/40 rounded-xl px-4 py-3">
+      <p className="text-yellow-400 text-xs font-semibold mb-1.5">⚠️ BBM VI Chalk Alert</p>
+      <ul className="space-y-0.5">
+        {bbm6Context.highOwnershipPlayers.map(p => (
+          <li key={p.name} className="text-xs text-yellow-200/70">
+            {p.name} — {p.ownership}% finalist ownership
+          </li>
         ))}
-      </div>
-      <div className="space-y-1">
-        {riskNotes?.map((note, i) => (
-          <p key={i} className="text-xs text-slate-400">• {note}</p>
-        ))}
-      </div>
+      </ul>
+      <p className="text-xs text-yellow-300/50 italic mt-2">
+        This is a differentiation flag, not a quality signal — prior-year finalist concentration doesn't transfer.
+      </p>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Main GradeDisplay component
+// Draft date badge
+// ---------------------------------------------------------------------------
+function DraftDateBadge({ riskFeedback }) {
+  if (!riskFeedback) return null;
+  const timingLine = riskFeedback.find(f =>
+    f.includes('Drafted') || f.includes('Early draft') || f.includes('Late draft')
+  );
+  if (!timingLine) return null;
+  return (
+    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs
+                    bg-slate-700/60 border border-slate-600 text-slate-300">
+      📅 {timingLine}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main GradeDisplay
 // ---------------------------------------------------------------------------
 export default function GradeDisplay({ result, onReset }) {
-  if (!result || result.error) {
+  if (!result) {
     return (
       <div className="bg-slate-900 rounded-xl border border-slate-700 p-8 text-center">
-        <p className="text-slate-400">{result?.error || 'No result to display.'}</p>
+        <p className="text-slate-400">No result to display.</p>
         {onReset && (
           <button onClick={onReset} className="mt-4 text-green-400 hover:text-green-300 text-sm">
             ← Enter a roster
@@ -287,61 +346,72 @@ export default function GradeDisplay({ result, onReset }) {
     );
   }
 
-  const { letter, total, components, raw, strengths, weaknesses, tips } = result;
+  const {
+    overallGrade, overallScore,
+    constructionScore, valueScore, stackScore, riskScore,
+    constructionFeedback, valueFeedback, stackFeedback, riskFeedback,
+    constructionDetail, valueDetail, stackDetail,
+    topStrengths, topWeaknesses,
+    achievements, bbm6Context,
+  } = result;
+
+  const components = [
+    { k: 'construction', label: 'Construction', score: constructionScore, w: 0.35 },
+    { k: 'value',        label: 'Value',        score: valueScore,        w: 0.35 },
+    { k: 'stack',        label: 'Stack',        score: stackScore,        w: 0.20 },
+    { k: 'risk',         label: 'Risk',         score: riskScore,         w: 0.10 },
+  ];
 
   return (
     <div className="space-y-5">
       {/* Grade card */}
       <div className="bg-slate-900 rounded-xl border border-slate-700 p-6">
+        {/* Achievement badges above grade */}
+        <AchievementBadges achievements={achievements} />
+
         <div className="flex items-center gap-6">
-          {/* Letter grade */}
+          {/* Letter grade box */}
           <div
             className={`w-24 h-24 rounded-2xl ring-2 shadow-xl flex flex-col items-center
-                        justify-center flex-shrink-0 bg-slate-800 ${gradeRingColor(letter)}`}
+                        justify-center flex-shrink-0 bg-slate-800 ${gradeRingColor(overallGrade)}`}
           >
-            <span className={`text-4xl font-black leading-none ${gradeTextColor(letter)}`}>
-              {letter}
+            <span className={`text-4xl font-black leading-none ${gradeTextColor(overallGrade)}`}>
+              {overallGrade}
             </span>
-            <span className="text-slate-500 text-xs mt-1 font-mono">{total}/100</span>
+            <span className="text-slate-500 text-xs mt-1 font-mono">{overallScore}/100</span>
           </div>
 
-          {/* Summary */}
-          <div className="flex-1">
+          {/* Summary + component bars */}
+          <div className="flex-1 min-w-0">
             <h2 className="text-xl font-bold text-white mb-1">Team Grade</h2>
-            <p className="text-slate-400 text-sm mb-4">
-              Calibrated from 1.6M BBM rosters across 5 tournament seasons.
+            <p className="text-slate-400 text-sm mb-3">
+              BBM V &amp; VI calibrated · 1,078 finalist rosters
             </p>
-
-            {/* Component scores inline */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-              {[
-                { k: 'construction', label: 'Construction', w: 0.35 },
-                { k: 'value',        label: 'Value',        w: 0.35 },
-                { k: 'stack',        label: 'Stack',        w: 0.20 },
-                { k: 'risk',         label: 'Risk',         w: 0.10 },
-              ].map(({ k, label, w }) => (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+              {components.map(({ k, label, score, w }) => (
                 <div key={k} className="flex items-center gap-2 text-sm">
                   <span className="text-slate-400 w-24 flex-shrink-0">{label}</span>
                   <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${barColor(components[k])}`}
-                      style={{ width: `${components[k]}%` }}
-                    />
+                    <div className={`h-full rounded-full ${barColor(score)}`} style={{ width: `${score}%` }} />
                   </div>
-                  <span className={`text-xs font-mono font-semibold w-8 text-right ${scoreColor(components[k])}`}>
-                    {components[k]}
+                  <span className={`text-xs font-mono font-semibold w-8 text-right ${scoreColor(score)}`}>
+                    {score}
                   </span>
                 </div>
               ))}
             </div>
           </div>
         </div>
+
+        {/* Draft date badge (only if timing line exists) */}
+        <div className="mt-3">
+          <DraftDateBadge riskFeedback={riskFeedback} />
+        </div>
       </div>
 
       {/* Strengths & Weaknesses */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Strengths */}
-        {strengths?.length > 0 && (
+        {topStrengths?.length > 0 && (
           <div className="bg-green-950/40 border border-green-800/50 rounded-xl p-4">
             <h3 className="text-green-400 font-semibold text-sm mb-2 flex items-center gap-1.5">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -350,7 +420,7 @@ export default function GradeDisplay({ result, onReset }) {
               Strengths
             </h3>
             <ul className="space-y-1.5">
-              {strengths.map((s, i) => (
+              {topStrengths.map((s, i) => (
                 <li key={i} className="text-xs text-green-200/80 flex gap-2">
                   <span className="text-green-500 mt-0.5 flex-shrink-0">✓</span>
                   <span>{s}</span>
@@ -359,9 +429,7 @@ export default function GradeDisplay({ result, onReset }) {
             </ul>
           </div>
         )}
-
-        {/* Weaknesses */}
-        {weaknesses?.length > 0 && (
+        {topWeaknesses?.length > 0 && (
           <div className="bg-red-950/40 border border-red-800/50 rounded-xl p-4">
             <h3 className="text-red-400 font-semibold text-sm mb-2 flex items-center gap-1.5">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -370,7 +438,7 @@ export default function GradeDisplay({ result, onReset }) {
               Weaknesses
             </h3>
             <ul className="space-y-1.5">
-              {weaknesses.map((w, i) => (
+              {topWeaknesses.map((w, i) => (
                 <li key={i} className="text-xs text-red-200/80 flex gap-2">
                   <span className="text-red-500 mt-0.5 flex-shrink-0">✗</span>
                   <span>{w}</span>
@@ -381,40 +449,29 @@ export default function GradeDisplay({ result, onReset }) {
         )}
       </div>
 
-      {/* Tips */}
-      {tips?.length > 0 && (
-        <div className="bg-yellow-950/30 border border-yellow-700/40 rounded-xl px-4 py-3">
-          <p className="text-yellow-400 text-xs font-semibold mb-1">💡 Notes</p>
-          {tips.map((t, i) => (
-            <p key={i} className="text-xs text-yellow-200/70">{t}</p>
-          ))}
-        </div>
-      )}
+      {/* BBM6 chalk alert */}
+      <BBM6ChalkAlert bbm6Context={bbm6Context} />
 
-      {/* Detailed component breakdowns */}
+      {/* Score breakdowns */}
       <div className="space-y-3">
         <h3 className="text-slate-400 text-sm font-semibold uppercase tracking-wider px-1">
           Score Breakdowns
         </h3>
-
-        <Accordion title="Construction" icon="🏗️" defaultOpen={false}>
-          <ConstructionDetail raw={raw?.construction} />
+        <Accordion title="Construction" icon="🏗️">
+          <ConstructionDetail detail={constructionDetail} feedback={constructionFeedback} />
         </Accordion>
-
-        <Accordion title="Value" icon="💰" defaultOpen={false}>
-          <ValueDetail raw={raw?.value} />
+        <Accordion title="Value" icon="💰">
+          <ValueDetail detail={valueDetail} feedback={valueFeedback} />
         </Accordion>
-
         <Accordion title="Stack" icon="⚡" defaultOpen={true}>
-          <StackDetail raw={raw?.stack} />
+          <StackDetail detail={stackDetail} feedback={stackFeedback} />
         </Accordion>
-
-        <Accordion title="Risk" icon="🎲" defaultOpen={false}>
-          <RiskDetail raw={raw?.risk} />
+        <Accordion title="Risk" icon="🎲">
+          <RiskDetail feedback={riskFeedback} />
         </Accordion>
       </div>
 
-      {/* Reset button */}
+      {/* Reset */}
       {onReset && (
         <div className="pt-2">
           <button

@@ -14,8 +14,8 @@ export default function Home() {
   const [result, setResult] = useState(null);
   const [showResult, setShowResult] = useState(false);
 
-  const handleAnalyze = (roster) => {
-    const gradeResult = gradeTeam(roster);
+  const handleAnalyze = (roster, options = {}) => {
+    const gradeResult = gradeTeam(roster, options);
     setResult(gradeResult);
     setShowResult(true);
   };

@@ -1,118 +1,64 @@
-/**
- * stackingData.js
- * Week 17 game tier data and QB stack tier classifications for BBM7 (2026 season).
- *
- * Week 17 game tiers are based on projected game environment:
- *   implied total, game importance, offensive coaching quality.
- * S = elite shootout environment, A = strong game, B = good game,
- * C = moderate game, D = low-ceiling or meaningless game.
- *
- * NOTE: 2026 NFL Week 17 schedule releases in May 2026.
- * Update WEEK17_GAMES once official lines/totals are available.
- */
-
-// ---------------------------------------------------------------------------
-// Week 17 game tiers (placeholder — update with final schedule + totals)
-// Key: "TEAM1-TEAM2" (alphabetical order) or "TEAM" (single team lookup)
-// Each entry has: tier, impliedTotal, teams, label
-// ---------------------------------------------------------------------------
 export const WEEK17_GAMES = [
-  // S-tier: elite offense vs elite offense, implied team total 28+
-  { tier: 'S', teams: ['BUF', 'KC'],  label: 'Bills vs Chiefs',       impliedTotal: 56 },
-  { tier: 'S', teams: ['CIN', 'PHI'], label: 'Bengals vs Eagles',     impliedTotal: 54 },
-  { tier: 'S', teams: ['DET', 'BAL'], label: 'Lions vs Ravens',       impliedTotal: 55 },
-
-  // A-tier: high-ceiling game, implied total 48-53
-  { tier: 'A', teams: ['LAR', 'SF'],  label: 'Rams vs 49ers',        impliedTotal: 52 },
-  { tier: 'A', teams: ['WAS', 'DAL'], label: 'Commanders vs Cowboys',impliedTotal: 51 },
-  { tier: 'A', teams: ['MIN', 'GB'],  label: 'Vikings vs Packers',   impliedTotal: 50 },
-  { tier: 'A', teams: ['MIA', 'NO'],  label: 'Dolphins vs Saints',   impliedTotal: 50 },
-  { tier: 'A', teams: ['HOU', 'IND'], label: 'Texans vs Colts',      impliedTotal: 49 },
-
-  // B-tier: good but not elite game environments
-  { tier: 'B', teams: ['SEA', 'LAC'], label: 'Seahawks vs Chargers', impliedTotal: 47 },
-  { tier: 'B', teams: ['ATL', 'TB'],  label: 'Falcons vs Buccaneers',impliedTotal: 47 },
-  { tier: 'B', teams: ['CHI', 'NE'],  label: 'Bears vs Patriots',    impliedTotal: 46 },
-  { tier: 'B', teams: ['ARI', 'DEN'], label: 'Cardinals vs Broncos', impliedTotal: 45 },
-  { tier: 'B', teams: ['NYJ', 'LV'],  label: 'Jets vs Raiders',      impliedTotal: 44 },
-
-  // C-tier: moderate game environments
-  { tier: 'C', teams: ['CAR', 'TEN'], label: 'Panthers vs Titans',   impliedTotal: 42 },
-  { tier: 'C', teams: ['JAX', 'CLE'], label: 'Jaguars vs Browns',    impliedTotal: 40 },
-  { tier: 'C', teams: ['NYG', 'PIT'], label: 'Giants vs Steelers',   impliedTotal: 40 },
-
-  // D-tier: low totals or potential meaningless games
-  { tier: 'D', teams: ['WAS', 'NYG'], label: 'Commanders vs Giants', impliedTotal: 38 },
+  { game:"Lions-Bears", teams:["DET","CHI"], total:54.0, window:"NFL Net late Sun", tier:"S" },
+  { game:"Rams-Buccaneers", teams:["LAR","TB"], total:52.4, window:"Sun TBD", tier:"S" },
+  { game:"Cowboys-Giants", teams:["DAL","NYG"], total:50.1, window:"Sun 1pm", tier:"A" },
+  { game:"Broncos-Patriots", teams:["DEN","NE"], total:49.7, window:"Sun TBD", tier:"A" },
+  { game:"Ravens-Bengals", teams:["BAL","CIN"], total:49.3, window:"TNF NYE", tier:"A", leverageMultiplier:1.3 },
+  { game:"Bills-Dolphins", teams:["BUF","MIA"], total:48.7, window:"Sun 1pm", tier:"A" },
+  { game:"Commanders-Jaguars", teams:["WAS","JAX"], total:48.6, window:"Sun TBD", tier:"A" },
+  { game:"Seahawks-Panthers", teams:["SEA","CAR"], total:48.2, window:"Sun 1pm", tier:"A" },
+  { game:"Texans-Packers", teams:["HOU","GB"], total:46.9, window:"MNF", tier:"B", leverageMultiplier:1.15 },
+  { game:"Eagles-49ers", teams:["PHI","SF"], total:46.6, window:"SNF", tier:"B", leverageMultiplier:1.15 },
+  { game:"Colts-Browns", teams:["IND","CLE"], total:43.8, window:"Sun 1pm", tier:"C" },
+  { game:"Chiefs-Chargers", teams:["KC","LAC"], total:41.9, window:"Sun TBD", tier:"C" },
+  { game:"Steelers-Titans", teams:["PIT","TEN"], total:39.1, window:"Sun 1pm", tier:"D" },
+  { game:"Saints-Falcons", teams:["NO","ATL"], total:38.8, window:"Sun 1pm", tier:"D" },
+  { game:"Vikings-Jets", teams:["MIN","NYJ"], total:37.8, window:"Sun 1pm", tier:"D" },
+  { game:"Raiders-Cardinals", teams:["LV","ARI"], total:35.1, window:"Sun 2pm", tier:"D" }
 ];
 
-// ---------------------------------------------------------------------------
-// Tier score bonuses for game stack detection
-// ---------------------------------------------------------------------------
-export const GAME_TIER_BONUS = {
-  S: 25,
-  A: 20,
-  B: 15,
-  C: 10,
-  D: 5,
+export const WEEK16_GAMES = [
+  { game:"Rams-Seahawks", teams:["LAR","SEA"], tier:"S", window:"Xmas Night Fox", leverageMultiplier:1.2 },
+  { game:"Bills-Broncos", teams:["BUF","DEN"], tier:"S", window:"Xmas Netflix", leverageMultiplier:1.15 },
+  { game:"Packers-Bears", teams:["GB","CHI"], tier:"A", window:"Xmas Netflix" },
+  { game:"Texans-Eagles", teams:["HOU","PHI"], tier:"A", window:"TNF Xmas Eve", leverageMultiplier:1.15 },
+  { game:"Jaguars-Cowboys", teams:["JAX","DAL"], tier:"A", window:"SNF" },
+  { game:"Bengals-Colts", teams:["CIN","IND"], tier:"A", window:"Sun TBD" },
+  { game:"Patriots-Jets", teams:["NE","NYJ"], tier:"A", window:"Sun TBD" },
+  { game:"Giants-Lions", teams:["NYG","DET"], tier:"B", window:"MNF", leverageMultiplier:1.15 },
+  { game:"Chargers-Dolphins", teams:["LAC","MIA"], tier:"B", window:"Sun TBD" },
+  { game:"Buccaneers-Falcons", teams:["TB","ATL"], tier:"B", window:"Sun TBD" },
+  { game:"Cardinals-Saints", teams:["ARI","NO"], tier:"C", window:"Sun TBD" }
+];
+
+export const WEEK15_GAMES = [
+  { game:"Cowboys-Rams", teams:["DAL","LAR"], tier:"S", window:"Sun late" },
+  { game:"Lions-Vikings", teams:["DET","MIN"], tier:"A", window:"SNF", leverageMultiplier:1.15 },
+  { game:"Bears-Bills", teams:["CHI","BUF"], tier:"A", window:"Sat CBS", leverageMultiplier:1.1 },
+  { game:"Patriots-Chiefs", teams:["NE","KC"], tier:"A", window:"MNF", leverageMultiplier:1.15 },
+  { game:"Seahawks-Eagles", teams:["SEA","PHI"], tier:"A", window:"Sat Fox" },
+  { game:"Chargers-49ers", teams:["LAC","SF"], tier:"A", window:"TNF" },
+  { game:"Bengals-Panthers", teams:["CIN","CAR"], tier:"A", window:"Sun 1pm" },
+  { game:"Dolphins-Packers", teams:["MIA","GB"], tier:"B", window:"Sun 1pm" },
+  { game:"Ravens-Steelers", teams:["BAL","PIT"], tier:"B", window:"Sun 1pm" },
+  { game:"Browns-Giants", teams:["CLE","NYG"], tier:"B", window:"Sun 1pm" },
+  { game:"Colts-Titans", teams:["IND","TEN"], tier:"C", window:"Sun 1pm" }
+];
+
+// Multi-year insight: value QBs win as often as elite QBs. Tiers reflect stack quality, not prestige.
+export const QB_TIERS = {
+  ELITE: ["BUF","BAL","DET","PHI","CIN"],
+  STRONG: ["SEA","LAR","DAL","KC","HOU","SF"],
+  VIABLE: ["GB","DEN","JAX","CHI","NE","MIA","IND","NYG","LAC","WAS"]
 };
 
-// ---------------------------------------------------------------------------
-// QB stack tier classifications (based on 2026 BBM7 ADP / projected points)
-// ELITE = top-3 QB ADP, STRONG = QB4-7, VIABLE = QB8-14, WEAK = QB15+
-// ---------------------------------------------------------------------------
-export const QB_STACK_TIERS = {
-  ELITE: {
-    players: ['Josh Allen', 'Lamar Jackson', 'Joe Burrow'],
-    teams:   ['BUF',        'BAL',           'CIN'],
-    bonus: 20,
-    label: 'Elite',
-  },
-  STRONG: {
-    players: ['Jayden Daniels', 'Jalen Hurts', 'Caleb Williams', 'Drake Maye'],
-    teams:   ['WAS',            'PHI',         'CHI',            'NE'],
-    bonus: 15,
-    label: 'Strong',
-  },
-  VIABLE: {
-    players: [
-      'Dak Prescott', 'Trevor Lawrence', 'Justin Herbert', 'Jaxson Dart',
-      'Patrick Mahomes', 'Brock Purdy', 'Bo Nix',
-    ],
-    teams: ['DAL', 'JAX', 'LAC', 'NYG', 'KC', 'SF', 'DEN'],
-    bonus: 10,
-    label: 'Viable',
-  },
-  WEAK: {
-    // Everyone else — still better than no QB stack
-    bonus: 5,
-    label: 'Weak',
-  },
+export const BBM6_HIGH_OWNERSHIP = {
+  "Puka Nacua":62.5,"Chris Olave":47.1,"James Cook":45.5,"Kyle Pitts":41.7,
+  "Matthew Stafford":36.2,"Travis Etienne Jr":30.6,"Jaxon Smith-Njigba":29.1,"Jaylen Warren":27.5
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+export const MEANINGFUL_W17_TEAMS = ["BUF","BAL","DET","PHI","CIN","SEA","LAR","DAL","HOU","GB","SF","MIA","JAX","DEN","KC","LAC","WAS","NE","CHI","NYG","CAR","NO","ATL"];
 
-/** Given a player name, return their QB stack tier key or null. */
-export function getQBTier(playerName) {
-  for (const [tier, data] of Object.entries(QB_STACK_TIERS)) {
-    if (tier === 'WEAK') continue;
-    if (data.players.some(p => p.toLowerCase() === playerName.toLowerCase())) {
-      return tier;
-    }
-  }
-  return 'WEAK';
-}
+export const DEAD_ZONE_RBS = ["Kyren Williams","Javonte Williams","RJ Harvey","Rachaad White","Zack Moss","Clyde Edwards-Helaire","Dameon Pierce","Miles Sanders","Latavius Murray"];
 
-/** Given an NFL team abbreviation, find the Week 17 game entry (or null). */
-export function getWeek17Game(teamAbbr) {
-  if (!teamAbbr) return null;
-  return WEEK17_GAMES.find(g => g.teams.includes(teamAbbr.toUpperCase())) || null;
-}
-
-/** Return the opposing team in a Week 17 matchup for a given team. */
-export function getOpponent(teamAbbr) {
-  const game = getWeek17Game(teamAbbr);
-  if (!game) return null;
-  return game.teams.find(t => t !== teamAbbr.toUpperCase()) || null;
-}
+export const ELITE_TES = ["Brock Bowers","Trey McBride","Colston Loveland","Tyler Warren","Tucker Kraft"];
