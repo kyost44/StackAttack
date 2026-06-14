@@ -1,28 +1,44 @@
 /**
  * Home.jsx
  * Main page for the Stackulator BBM7 Team Grader.
- * Two-column layout (desktop): roster input left, grade display right.
- * Single-column stacked on mobile.
+ * Flow: RosterInput → AnalysisLoader (~5.8s) → RosterSummary + GradeDisplay
  */
 
 import { useState } from 'react';
 import RosterInput from '../components/RosterInput';
 import GradeDisplay from '../components/GradeDisplay';
+import AnalysisLoader from '../components/AnalysisLoader';
+import RosterSummary from '../components/RosterSummary';
 import { gradeTeam } from '../engine/scoringEngine';
 
 export default function Home() {
   const [result, setResult] = useState(null);
+  const [pendingResult, setPendingResult] = useState(null); // Change 6: computed immediately for badge unlock
   const [showResult, setShowResult] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [submittedRoster, setSubmittedRoster] = useState([]);
 
   const handleAnalyze = (roster, options = {}) => {
     const gradeResult = gradeTeam(roster, options);
-    setResult(gradeResult);
+    setPendingResult(gradeResult); // Change 6: store immediately so AnalysisLoader can reveal badges
+    setResult(null);
+    setSubmittedRoster(roster);
+    setShowResult(false);
+    setAnalyzing(true);
+  };
+
+  const handleLoaderComplete = () => {
+    setResult(pendingResult); // Change 6: promote pending result on loader complete
+    setAnalyzing(false);
     setShowResult(true);
   };
 
   const handleReset = () => {
     setResult(null);
+    setPendingResult(null);
     setShowResult(false);
+    setAnalyzing(false);
+    setSubmittedRoster([]);
   };
 
   return (
@@ -32,7 +48,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-black tracking-tight text-white">
-              Stack<span className="text-green-400">ulator</span>
+              Stack<span style={{ color: 'var(--color-orange)' }}>ulator</span>
             </span>
             <span className="hidden sm:block text-slate-600 text-sm ml-1">·</span>
             <span className="hidden sm:block text-slate-400 text-sm">BBM7 Team Grader</span>
@@ -53,71 +69,85 @@ export default function Home() {
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">
             Grade Your{' '}
-            <span className="text-green-400">Best Ball</span>{' '}
+            {/* Change 5 Fix 2: Best Ball accent → orange */}
+            <span style={{ color: 'var(--color-orange)' }}>Best Ball</span>{' '}
             Roster
           </h1>
           <p className="text-slate-400 text-base max-w-2xl mx-auto">
             Enter your 18-round BBM7 draft picks and get a data-driven letter grade.
-            Calibrated from advance-rate analysis of 1.6 million BBM II–V rosters.
+            Calibrated from advance-rate analysis of 1.6 million BBM V+VI rosters.
           </p>
         </div>
 
-        {/* Score methodology pills */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {[
-            { label: 'Construction', pct: '35%', icon: '🏗️', tip: 'WR/RB/QB/TE count buckets' },
-            { label: 'Value',        pct: '35%', icon: '💰', tip: 'ADP efficiency + capital allocation' },
-            { label: 'Stack',        pct: '20%', icon: '⚡', tip: 'QB stack + Week 17 game tier' },
-            { label: 'Risk',         pct: '10%', icon: '🎲', tip: 'RB1 timing + dead zones' },
-          ].map(({ label, pct, icon, tip }) => (
-            <div
-              key={label}
-              title={tip}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 border border-slate-700
-                         rounded-full text-sm cursor-help"
-            >
-              <span>{icon}</span>
-              <span className="text-white font-medium">{label}</span>
-              <span className="text-green-400 font-bold">{pct}</span>
+        {/* Change 5 Fix 3: Weight pills → expandable "How it works" */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <details>
+            <summary style={{
+              cursor: 'pointer',
+              color: 'var(--color-blue-light)',
+              fontWeight: 500,
+              listStyle: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '14px',
+            }}>
+              <span>How we grade</span>
+              <span style={{ fontSize: '11px' }}>▾</span>
+            </summary>
+            <div style={{
+              marginTop: '12px',
+              padding: '16px 24px',
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              borderRadius: 'var(--radius-md)',
+              textAlign: 'left',
+              maxWidth: '480px',
+              margin: '12px auto 0',
+              lineHeight: 1.65,
+              fontSize: '13px',
+              color: 'var(--color-text-light)',
+            }}>
+              <div style={{ fontWeight: 600, color: 'var(--color-cream)', marginBottom: '8px' }}>
+                Four components, 1.6M drafts of calibration
+              </div>
+              <div>Construction (30%) — positional distribution and round allocation</div>
+              <div>Value (30%) — ADP efficiency and capital discipline</div>
+              <div>Stack (25%) — Week 17 game stacks and team correlation (diminishing returns)</div>
+              <div>Boom Bust Balance (15%) — floor quality and ceiling potential</div>
+              <div style={{ marginTop: '10px', color: 'var(--color-text-light)', fontSize: '12px', opacity: 0.7 }}>
+                Calibrated from BBM V + VI (2024–2025 seasons) · Weighted 60% BBM VI / 40% BBM V · Recalibrated annually.
+              </div>
             </div>
-          ))}
+          </details>
         </div>
       </div>
 
       {/* Main content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-12">
-        {!showResult ? (
-          /* Input view — centered single column for the table */
+        {analyzing ? (
+          <AnalysisLoader onComplete={handleLoaderComplete} achievements={pendingResult?.achievements || []} />
+        ) : !showResult ? (
           <div className="max-w-3xl mx-auto">
             <RosterInput onAnalyze={handleAnalyze} />
           </div>
         ) : (
-          /* Results view — two-column on desktop */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* Left: roster table (collapsed / re-editable) */}
             <div>
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3">
                 <h2 className="text-slate-400 text-sm font-semibold uppercase tracking-wider">
-                  Your Roster
+                  Submitted Roster
                 </h2>
-                <button
-                  onClick={handleReset}
-                  className="text-xs text-green-400 hover:text-green-300 transition-colors"
-                >
-                  Edit / New Roster →
-                </button>
               </div>
-              <RosterInput onAnalyze={handleAnalyze} />
+              <RosterSummary roster={submittedRoster} onEdit={handleReset} />
             </div>
-
-            {/* Right: grade display */}
             <div className="lg:sticky lg:top-20">
               <div className="mb-3">
                 <h2 className="text-slate-400 text-sm font-semibold uppercase tracking-wider">
                   Grade Report
                 </h2>
               </div>
-              <GradeDisplay result={result} onReset={handleReset} />
+              {/* Pass roster so GradeDisplay can generate the narrative */}
+              <GradeDisplay result={result} roster={submittedRoster} onReset={handleReset} />
             </div>
           </div>
         )}
@@ -126,7 +156,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-slate-800 mt-8 py-6 text-center">
         <p className="text-slate-600 text-xs">
-          Stackulator · Calibrated from BBM II–V + Best Bowl Mania data ·
+          Stackulator · Calibrated from BBM V + VI (2024–2025) ·
           Not affiliated with Underdog Fantasy
         </p>
       </footer>
