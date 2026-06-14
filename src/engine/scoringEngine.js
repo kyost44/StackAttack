@@ -107,7 +107,24 @@ function scoreConstruction(roster){
   const rbR6D=RB_R6[rbR6]??CONSTRUCTION_DEFAULTS.RB_R6;
   const rbR10D=RB_R10[rbR10]??CONSTRUCTION_DEFAULTS.RB_R10;
   const rbTotD=RB_TOT[rbTotal]??CONSTRUCTION_DEFAULTS.RB_TOT;
-  const teD=TE_TOT[teTotal]??CONSTRUCTION_DEFAULTS.TE_TOT;
+  // Change 2 (calibration patch): investment-weighted TE penalty for 3+ TEs.
+  // 1-2 TEs keep the count-based TE_TOT delta; 3+ TEs replace the flat penalty
+  // with one that scales by where the EXCESS (3rd+) TEs were drafted — a 3rd TE
+  // at R5 costs premium capital, a 3rd TE at R16 is a near-free dart.
+  const teList=[...byPos.TE].sort((a,b)=>a.round-b.round);
+  let teExcessPenalty=0, teD;
+  if(teTotal>=3){
+    for(let i=2;i<teTotal;i++){
+      const rd=teList[i].round||12;
+      if(rd<=6) teExcessPenalty+=2.5;
+      else if(rd<=10) teExcessPenalty+=1.5;
+      else if(rd<=14) teExcessPenalty+=0.7;
+      else teExcessPenalty+=0.3;
+    }
+    teD=-teExcessPenalty;
+  } else {
+    teD=TE_TOT[teTotal]??CONSTRUCTION_DEFAULTS.TE_TOT;
+  }
 
   // 3-QB construction: edge conditioned on QB3 draft round (cheap QB3 = the structural edge)
   let qbD;
@@ -127,7 +144,7 @@ function scoreConstruction(roster){
 
   const totalDelta=wrR6D+wrR10D+wrTotD+rbR6D+rbR10D+rbTotD+qbD+teD;
   detail.totalDelta=totalDelta;
-  Object.assign(detail,{wrR6D,wrR10D,wrTotD,rbR6D,rbR10D,rbTotD,qbD,teD});
+  Object.assign(detail,{wrR6D,wrR10D,wrTotD,rbR6D,rbR10D,rbTotD,qbD,teD,teExcessPenalty});
   let score=Math.max(0,Math.min(100,Math.round(78+totalDelta*4)));
 
   // WR count feedback — player-specific
@@ -151,7 +168,11 @@ function scoreConstruction(roster){
   // TE count feedback
   if(teTotal===1) feedback.push(`1 TE — modern data shows this is actually a positive signal (+1.67pp) when paired with elite TE.`);
   else if(teTotal===2) feedback.push(`2 TEs — solid (+0.72pp in modern data).`);
-  else if(teTotal===3) feedback.push(`3 TEs — common but not optimal. Modern data: 1-2 TEs outperforms 3-TE construction.`);
+  else if(teTotal===3){
+    const thirdTE=teList[2];
+    if((thirdTE.round||12)<=10) feedback.push(`3 TEs with meaningful early capital — modern data shows 1-2 TEs outperforms when the 3rd costs a premium pick.`);
+    else feedback.push(`3 TEs — but your 3rd was a late-round dart (R${thirdTE.round}), which limits the downside of the extra investment.`);
+  }
 
   // WR R6 concentration
   if(wrR6>=5) feedback.push(`${wrR6} WRs in first 6 rounds — heavy early WR investment (-2.09 to -3.23 in modern data). Risk concentration; consider whether RB/TE allocations got squeezed.`);
@@ -289,7 +310,7 @@ function playerQualityByRound(round) {
 // qbInGame: true if one of the roster's QBs plays in this game
 // bothSides: true if players from both teams in the game are present
 function w17GameStackValue(tierLabel, stackPlayers, qbInGame, bothSides) {
-  const TIER_BASE = { S: 25, A: 20, B: 14, C: 8, D: 3 };
+  const TIER_BASE = { S: 22, A: 18, B: 14, C: 11, D: 7 };
   const base = TIER_BASE[tierLabel] || 3;
   if (!stackPlayers || stackPlayers.length === 0) return 0;
   const avgQuality = stackPlayers.reduce((sum, p) =>
@@ -405,8 +426,8 @@ function scoreStack(roster){
   // STACK REALISM PATCH (Step 3): quality-weighted W17 game stack scoring.
   // Rebuilt from WEEK17_GAMES + roster (Step 1 finding #2: w17GameStackDetails
   // stores player-name strings only, so per-player round must come from roster).
-  // w17GameStackValue replaces the flat tier table; leverageMultiplier is no
-  // longer applied (the qbInGame / bringBack factors supersede it).
+  // w17GameStackValue replaces the flat tier table; the qbInGame / bringBack
+  // quality factors define the per-game value.
   const w17D=[], w17StackValues=[];
   for(const g of WEEK17_GAMES){
     const [t1,t2]=g.teams;
