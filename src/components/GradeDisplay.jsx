@@ -845,6 +845,74 @@ export default function GradeDisplay({ result, roster = [], onReset }) {
         </div>
       )}
 
+      {/* Improvement suggestion — actionable "path to a better grade" */}
+      {result.improvementSuggestion && (
+        <div style={{
+          marginTop: 'var(--space-md)',
+          marginBottom: 'var(--space-md)',
+          padding: '16px 18px',
+          borderRadius: 'var(--radius-md)',
+          background: 'linear-gradient(135deg, rgba(126,200,227,0.10), rgba(126,200,227,0.04))',
+          border: '1px solid rgba(126,200,227,0.35)',
+          boxShadow: '0 0 12px rgba(126,200,227,0.10)',
+        }}>
+          <div style={{
+            fontSize: '11px',
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-blue-light)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}>
+            <span>↗</span> Your Path to a Better Grade
+          </div>
+          <div style={{
+            fontSize: '15px',
+            fontWeight: 700,
+            color: 'var(--color-cream)',
+            marginBottom: '6px',
+            fontFamily: 'var(--font-display)',
+          }}>
+            {result.improvementSuggestion.headline}
+          </div>
+          <div style={{
+            fontSize: '13px',
+            lineHeight: 1.6,
+            color: 'rgba(255,255,255,0.75)',
+          }}>
+            {result.improvementSuggestion.detail}
+          </div>
+
+          {/* Placeholder slot for future analyst-informed note — renders nothing now */}
+          {result.improvementSuggestion.analystNote && (
+            <div style={{
+              marginTop: '12px',
+              paddingTop: '12px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              fontSize: '13px',
+              lineHeight: 1.6,
+              color: 'rgba(255,255,255,0.75)',
+            }}>
+              <span style={{
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-orange)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                display: 'block',
+                marginBottom: '4px',
+              }}>
+                Analyst Lens
+              </span>
+              {result.improvementSuggestion.analystNote}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Narrative paragraph */}
       <NarrativeBlock narrative={narrative} accentColor={accentColor} />
 

@@ -58,7 +58,13 @@ export function gradeTeam(roster, options = {}) {
     ceilingScore: bbb.ceilingScore,
     overall: overallScore,
   }, stack.detail, archetype);
+  const improvementSuggestion = computeImprovementSuggestion(
+    roster,
+    { construction: construction.score, value: value.score, stack: stack.score },
+    stack.detail, flags
+  );
   return {
+    improvementSuggestion,
     overallGrade, overallScore,
     constructionScore:construction.score, valueScore:value.score, stackScore:stack.score,
     riskScore:bbb.score,       // backward-compat alias — UI reads this for the bar
@@ -903,6 +909,118 @@ export function computeFlags(roster, scores, stackDetail, archetype) {
   fragilities.sort((a,b) => srcPriority[a.source] - srcPriority[b.source]);
 
   return { strengths, fragilities };
+}
+
+// ── IMPROVEMENT SUGGESTION ──
+// Surfaces the single highest-impact structural improvement as a positive,
+// forward-looking "path to a better grade" (priority-ranked, first match wins).
+export function computeImprovementSuggestion(roster, scores, stackDetail, flags) {
+  const byPos = {
+    QB: roster.filter(p => p.position === 'QB'),
+    RB: roster.filter(p => p.position === 'RB'),
+    WR: roster.filter(p => p.position === 'WR'),
+    TE: roster.filter(p => p.position === 'TE'),
+  };
+
+  const w17Stacks = stackDetail?.w17GameStackDetails || [];
+  const bestW17 = [...w17Stacks].sort((a, b) => (b.bonus || 0) - (a.bonus || 0))[0];
+  const fragIds = (flags?.fragilities || []).map(f => f.id);
+
+  // Priority-ranked checks — return the FIRST that applies (highest impact first)
+
+  // 1. No meaningful W17 stack at all — biggest ceiling problem
+  if (!w17Stacks.length || (bestW17?.bonus || 0) < 6) {
+    return {
+      type: 'structural',
+      headline: 'Add a Week 17 game stack',
+      detail: 'Your roster has no meaningful championship-week correlation. ' +
+        'Adding two players from the same Week 17 game — ideally one of your ' +
+        'QBs plus a target — is the single biggest ceiling improvement available.',
+    };
+  }
+
+  // 2. Best stack is in a low-tier game — ceiling capped by environment
+  const bestTier = bestW17?.tier;
+  if (bestTier === 'C' || bestTier === 'D') {
+    return {
+      type: 'structural',
+      headline: 'Raise your Week 17 game environment',
+      detail: `Your top stack is in a ${bestTier}-tier game — solid structure, ` +
+        'but a lower-scoring projected environment caps your ceiling. A stack in ' +
+        'an S or A-tier game (higher projected shootout) would raise your ' +
+        'championship-week upside most.',
+    };
+  }
+
+  // 3. QB with no stack partner
+  const qbTeams = new Set(byPos.QB.map(q => q.team).filter(Boolean));
+  const hasQBStack = byPos.QB.some(qb =>
+    roster.some(p => p.team === qb.team && p.position !== 'QB')
+  );
+  if (!hasQBStack && byPos.QB.length > 0) {
+    const topQB = [...byPos.QB].sort((a, b) => a.round - b.round)[0];
+    return {
+      type: 'structural',
+      headline: 'Stack your QB',
+      detail: `${topQB?.name || 'Your QB'} has no pass-catcher from his team on ` +
+        'your roster. Pairing your QB with his WR1 is the highest-correlation ' +
+        'move in best ball and would meaningfully lift your ceiling.',
+    };
+  }
+
+  // 4. Best stack has no bring-back
+  if (bestW17 && !bestW17.both) {
+    return {
+      type: 'structural',
+      headline: 'Complete your stack with a bring-back',
+      detail: `Your ${bestW17.game} stack only covers one side. Adding a player ` +
+        'from the opposing team captures the full shootout — bring-backs are a ' +
+        'common thread among championship rosters.',
+    };
+  }
+
+  // 5. Thin WR room
+  if (byPos.WR.length < 8) {
+    return {
+      type: 'structural',
+      headline: `Add an ${byPos.WR.length === 7 ? '8th' : 'additional'} WR`,
+      detail: `You have ${byPos.WR.length} WRs — below the 8-9 optimal band our ` +
+        'data validates. Another WR is the single biggest structural improvement ' +
+        'to your construction.',
+    };
+  }
+
+  // 6. Late RB1
+  const rb1 = [...byPos.RB].sort((a, b) => a.round - b.round)[0];
+  if (!rb1 || rb1.round > 9) {
+    return {
+      type: 'structural',
+      headline: 'Secure an earlier RB',
+      detail: 'Your first RB came late, which historically lowers floor. An ' +
+        'earlier-round RB would stabilize your weekly baseline.',
+    };
+  }
+
+  // 7. Heavy/early TE investment
+  const teList = [...byPos.TE].sort((a, b) => a.round - b.round);
+  if (teList.length >= 3 && teList[2]?.round <= 10) {
+    return {
+      type: 'structural',
+      headline: 'Reallocate premium TE capital',
+      detail: `Your 3rd TE (${teList[2]?.name}, R${teList[2]?.round}) used a ` +
+        'meaningful pick. Modern data favors 1-2 TEs — that capital often ' +
+        'returns more at WR.',
+    };
+  }
+
+  // Fallback — roster is strong, suggest the marginal edge
+  return {
+    type: 'structural',
+    headline: 'Push for a premium stack',
+    detail: 'This is a well-built roster. The marginal edge to contender status ' +
+      'is deepening your best stack — an additional high-quality player in your ' +
+      'top Week 17 game raises ceiling without sacrificing structure.',
+  };
 }
 
 // ── NARRATIVE GENERATOR ──
