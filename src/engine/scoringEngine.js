@@ -1,4 +1,4 @@
-import { WEEK17_GAMES, WEEK16_GAMES, WEEK15_GAMES, QB_TIERS, MEANINGFUL_W17_TEAMS, DEAD_ZONE_RBS, ELITE_TES, BBM6_HIGH_OWNERSHIP } from '../data/stackingData.js';
+import { WEEK17_GAMES, WEEK16_GAMES, WEEK15_GAMES, QB_TIERS, DEAD_ZONE_RBS, ELITE_TES, BBM6_HIGH_OWNERSHIP } from '../data/stackingData.js';
 import { getPlayerFlag } from '../data/playerFlags.js';
 
 // ── ARCHETYPE METADATA ──
@@ -83,7 +83,10 @@ export function gradeTeam(roster, options = {}) {
   };
 }
 
-function scoreToGrade(s){if(s>=95)return'A+';if(s>=90)return'A';if(s>=85)return'A-';if(s>=80)return'B+';if(s>=75)return'B';if(s>=70)return'B-';if(s>=65)return'C+';if(s>=60)return'C';if(s>=55)return'C-';if(s>=50)return'D+';if(s>=45)return'D';return'F';}
+// LOCKED grade ladder — ported as-is from the Python model (final 5-season
+// recalibration, pooled II-VI, ~1.16% A-tier). Note: the old ladder had a D+
+// tier (12 grades); Python's has 11 (no D+) — collapsed to match exactly.
+function scoreToGrade(s){if(s>=84)return'A+';if(s>=82)return'A';if(s>=81)return'A-';if(s>=79)return'B+';if(s>=78)return'B';if(s>=77)return'B-';if(s>=74)return'C+';if(s>=70)return'C';if(s>=68)return'C-';if(s>=62)return'D';return'F';}
 
 // ── CONSTRUCTION (30%) ──
 function scoreConstruction(roster){
@@ -271,31 +274,30 @@ function scoreValue(roster){
   return {score:valueScore,feedback,detail,achievements};
 }
 
-// ── STACK SCORING HELPERS ──
-// Change 1: Returns count of non-QB teammates from the given team
-function getQBTeammateCount(roster, qbTeam) {
-  if (!qbTeam) return 0;
-  return roster.filter(p => p.team === qbTeam && p.position !== 'QB').length;
-}
+// ─── STACK REALISM HELPERS (Phase 4 LOCKED — matches the Python model exactly) ──
+// Team-stack (season-long same-team concentration and every variant tested —
+// standalone, orthogonalized, cross-week "steadiness", regular-season mean and
+// variance) was rejected: flat-to-negative and sign-unstable in all 4 tests.
+// computeCumulativeTeamStacks / singleTeamStackValue / computeWeightedTeamStack /
+// getQBTeammateCount are DELETED — no team-stack term exists anywhere in scoring.
 
-// Change 2: Round-weighted team stack credit
-// 1 WR1 mate (R1-4) = ~9pts; 2 WR1 mates = 18pts; depth fliers worth much less
-function computeWeightedTeamStack(roster, qbTeam) {
-  if (!qbTeam) return 0;
-  const mates = roster.filter(p => p.team === qbTeam && p.position !== 'QB');
-  if (mates.length === 0) return 0;
-  let totalWeight = 0;
-  for (const mate of mates) {
-    const round = mate.round || 12;
-    const weight = round <= 4 ? 1.0 : round <= 8 ? 0.75 : round <= 12 ? 0.50 : 0.25;
-    totalWeight += weight;
-  }
-  // Normalize: 2 full-weight mates = full 18 credit
-  const normalized = Math.min(totalWeight / 2, 1.0);
-  return Math.round(18 * normalized);
-}
-
-// ─── STACK REALISM HELPERS ───────────────────────────────────────
+// PAIR_MULT: position-pair multipliers, PRESENCE-based — each pair TYPE
+// contributes its multiplier at most once per game cluster if both positions
+// are present, regardless of count (QB+1WR and QB+4WR score identically).
+// QB-WR is the only pair with a robust, cross-season-stable positive effect;
+// QB-TE/QB-RB are weak-positive; WR-RB tested negative, floored at 0 (don't
+// credit, don't penalize). Any pair not listed prices at 0.
+const PAIR_MULT = { qbwr: 1.00, qbte: 0.11, qbrb: 0.07, wrrb: 0.0 };
+const TIER_BASE = { S: 22, A: 18, B: 14, C: 11, D: 7 };
+const BRING_BACK = 1.15;
+const GAME_DR = [1.0, 0.5, 0.25, 0.1]; // diminishing returns across multiple games within a week
+// Week weights for the STACK combination only (Risk keeps its own weighting,
+// unchanged — Risk was not re-derived). W16 tested as pure noise across all
+// 4 training seasons (sign-unstable, flat conditional-advancement curve).
+const STACK_WEEK_WEIGHTS = { 15: 2.5, 16: 0.4, 17: 4.0 };
+const STACK_TWW = STACK_WEEK_WEIGHTS[15] + STACK_WEEK_WEIGHTS[16] + STACK_WEEK_WEIGHTS[17];
+// Raw weighted-average stack -> 0-100 transform (matches the locked Python model).
+const STACK_SCALE = 2.2, STACK_BASE = 18.0;
 
 // Player quality weight by draft round (proxy for role importance)
 function playerQualityByRound(round) {
@@ -310,289 +312,178 @@ function playerQualityByRound(round) {
   return 0.20;
 }
 
-// Quality-weighted W17 game stack value
-// tierLabel: 'S'|'A'|'B'|'C'|'D'
-// stackPlayers: array of {round} objects for all players in the stack
-// qbInGame: true if one of the roster's QBs plays in this game
-// bothSides: true if players from both teams in the game are present
-function w17GameStackValue(tierLabel, stackPlayers, qbInGame, bothSides) {
-  const TIER_BASE = { S: 22, A: 18, B: 14, C: 11, D: 7 };
-  const base = TIER_BASE[tierLabel] || 3;
+// Presence-based position-pair units for one game cluster.
+function pairUnits(stackPlayers) {
+  const nqb = stackPlayers.filter(p => p.position === 'QB').length;
+  const nwr = stackPlayers.filter(p => p.position === 'WR').length;
+  const nrb = stackPlayers.filter(p => p.position === 'RB').length;
+  const nte = stackPlayers.filter(p => p.position === 'TE').length;
+  let units = 0;
+  if (nqb >= 1 && nwr >= 1) units += PAIR_MULT.qbwr;
+  if (nqb >= 1 && nte >= 1) units += PAIR_MULT.qbte;
+  if (nqb >= 1 && nrb >= 1) units += PAIR_MULT.qbrb;
+  if (nwr >= 1 && nrb >= 1) units += PAIR_MULT.wrrb;
+  return units;
+}
+
+// Quality-weighted, position-pair-priced game stack value.
+// tierLabel: 'S'|'A'|'B'|'C'|'D'; stackPlayers: array of {position,round}
+// objects for all roster players in this game; bothSides: true if players
+// from both teams in the game are present (bring-back).
+function gameStackValue(tierLabel, stackPlayers, bothSides) {
   if (!stackPlayers || stackPlayers.length === 0) return 0;
+  const units = pairUnits(stackPlayers);
+  if (units <= 0) return 0; // no empirically-supported pair present -> no credit
+  const base = TIER_BASE[tierLabel] || 3;
   const avgQuality = stackPlayers.reduce((sum, p) =>
     sum + playerQualityByRound(p.round || p.adp_round), 0) / stackPlayers.length;
-  const qbBonus    = qbInGame  ? 1.30 : 0.50;
-  const bringBack  = bothSides ? 1.15 : 1.00;
-  return base * avgQuality * qbBonus * bringBack;
+  const bringBack = bothSides ? BRING_BACK : 1.00;
+  return base * avgQuality * units * bringBack;
 }
 
-// Single QB-led team stack value (round-weighted mates)
-function singleTeamStackValue(mateRounds, qbFactor) {
-  function mw(rd) {
-    if (!rd)    return 0.30;
-    if (rd <= 4)  return 1.00;
-    if (rd <= 8)  return 0.75;
-    if (rd <= 12) return 0.50;
-    return 0.25;
-  }
-  const total = mateRounds.reduce((sum, r) => sum + mw(r), 0);
-  return 5 * total * qbFactor;
-}
-
-// Cumulative team stack score across ALL team groupings
-// Rewards multiple QB-led stacks + non-QB groupings at 50%
-// Cap: 26
-// ADAPTATION (Step 1 finding #2): QB_TIERS.* are arrays in stackingData.js,
-// so membership uses .includes() — the spec's .has() would throw on an array.
-function computeCumulativeTeamStacks(roster, byPos) {
-  const stackVals = [];
-
-  // QB-led stacks: each QB + their same-team non-QB players
-  for (const qb of (byPos.QB || [])) {
-    if (!qb.team) continue;
-    const mates = roster.filter(p =>
-      p.team === qb.team &&
-      p.position !== 'QB' &&
-      (p.name || p.player) !== (qb.name || qb.player)
-    );
-    if (mates.length === 0) continue;
-    const qbFactor = (QB_TIERS?.ELITE?.includes(qb.team)) ? 1.20 :
-                     (QB_TIERS?.STRONG?.includes(qb.team)) ? 1.00 : 0.85;
-    const val = singleTeamStackValue(mates.map(m => m.round), qbFactor);
-    if (val > 0) stackVals.push(val);
-  }
-
-  // Non-QB groupings: 2+ players same team, no QB from that team on roster
-  const qbTeams = new Set((byPos.QB || []).map(q => q.team).filter(Boolean));
-  const nonQBGroups = {};
-  for (const p of roster) {
-    if (!p.team || p.position === 'QB') continue;
-    if (qbTeams.has(p.team)) continue; // already covered by QB-led stack
-    if (!nonQBGroups[p.team]) nonQBGroups[p.team] = [];
-    nonQBGroups[p.team].push(p.round);
-  }
-  for (const rounds of Object.values(nonQBGroups)) {
-    if (rounds.length < 2) continue;
-    // 50% of equivalent QB-led rate (no qb factor bonus)
-    const rawVal = singleTeamStackValue(rounds, 1.0);
-    stackVals.push(rawVal * 0.50);
-  }
-
-  if (stackVals.length === 0) return 0;
-
-  // Gentle diminishing returns — more stacks still help, each slightly less
-  const sorted = [...stackVals].sort((a, b) => b - a);
-  const DIM = [1.0, 0.9, 0.8, 0.7, 0.6];
-  const total = sorted.reduce((sum, v, i) => sum + v * (DIM[i] ?? 0.5), 0);
-  return Math.min(Math.round(total), 26);
-}
-
-// ── STACK (25%) ──
-function scoreStack(roster){
-  const byPos=getPos(roster), feedback=[], detail={}, achievements=[];
-  let score=16;
-  let topTier=null;
-  for(const qb of byPos.QB){
-    if(QB_TIERS.ELITE.includes(qb.team)){if(!topTier||topTier==='VIABLE'||topTier==='STRONG')topTier='ELITE';}
-    else if(QB_TIERS.STRONG.includes(qb.team)){if(!topTier||topTier==='VIABLE')topTier='STRONG';}
-    else if(!topTier)topTier='VIABLE';
-  }
-  // Change 1: 35% reduction when the tier QB has zero teammates on the roster
-  let qbTierBonus=topTier==='ELITE'?16:topTier==='STRONG'?12:topTier==='VIABLE'?8:0;
-  if(qbTierBonus>0&&topTier){
-    const tierList=topTier==='ELITE'?QB_TIERS.ELITE:topTier==='STRONG'?QB_TIERS.STRONG:QB_TIERS.VIABLE;
-    const tierQB=byPos.QB.find(q=>tierList.includes(q.team));
-    if(tierQB&&getQBTeammateCount(roster,tierQB.team)===0){
-      qbTierBonus=Math.round(qbTierBonus*0.65);
+// Per-week game-stack detection + diminishing returns across multiple games.
+// Returns { raw, details } — raw is UNCAPPED (the final 0-100 clip happens
+// once, after the week-weighted combination + STACK_SCALE/STACK_BASE).
+function computeWeekStack(games, roster) {
+  const details = [], values = [];
+  for (const g of games) {
+    const [t1, t2] = g.teams;
+    const a = roster.filter(p => p.team === t1), b = roster.filter(p => p.team === t2);
+    const tot = a.length + b.length, both = a.length >= 1 && b.length >= 1;
+    if (tot < 2) continue;
+    const stackPlayers = [...a, ...b];
+    const val = gameStackValue(g.tier, stackPlayers, both);
+    if (val > 0) {
+      values.push(val);
+      details.push({ game: g.game, tier: g.tier, window: g.window, both,
+        t1: a.map(p => p.name), t2: b.map(p => p.name), bonus: Math.round(val) });
     }
   }
-  score+=qbTierBonus; detail.qbTierBonus=qbTierBonus; detail.topQbTier=topTier;
-  if(topTier==='ELITE') feedback.push(`Elite QB tier (+16 stack score) — highest W17 ceiling. BBM V+VI data: elite QB stacks are consistent tournament openers.`);
-  else if(topTier==='STRONG') feedback.push(`Strong QB tier (+12 stack score) — high W17 upside. Tier gap vs elite is compressed in modern data; strong-tier QBs win as often.`);
-  else if(topTier==='VIABLE') feedback.push(`Viable QB tier (+8 stack score) — moderate W17 upside. Consider whether a cheaper QB3 can add stack redundancy.`);
-  else feedback.push(`No QB stacked — stack score starts at minimum. QB tier bonus is the largest single stack score driver.`);
+  const sorted = [...values].sort((a, b) => b - a);
+  const raw = sorted.reduce((sum, v, i) => sum + v * (GAME_DR[i] ?? GAME_DR[GAME_DR.length - 1]), 0);
+  return { raw, details };
+}
 
-  // STACK REALISM PATCH (Step 4): cumulative multi-stack team scoring.
-  // Replaces the single-best computeWeightedTeamStack call. The stackedSkill /
-  // tsDetails loop is preserved — achievements, feedback, buildStrengths, and the
-  // CORELESS_STACK flag all depend on teamStackDetails / stackedSkillPlayers.
+// ── STACK (25%) — Phase 4 LOCKED: structurally identical to the Python model.
+// score = weighted_avg(w15, w16, w17) * STACK_SCALE + STACK_BASE, clipped 0-100.
+// No QB-tier bonus, no team-stack, no dual-QB bonus, no per-week caps — every
+// mechanism the locked model tested and rejected is gone, not just de-weighted.
+function scoreStack(roster){
+  const feedback=[], detail={}, achievements=[];
+
+  // Informational only (feedback/achievements) — NOT part of the score.
+  const byPos=getPos(roster);
   let stackedSkill=0; const tsDetails=[];
   for(const qb of byPos.QB){
     const mates=roster.filter(p=>p.team===qb.team&&p.position!=='QB'&&['WR','TE','RB'].includes(p.position));
     if(mates.length>=1){stackedSkill+=mates.length; tsDetails.push({qb:qb.name,team:qb.team,partners:mates.map(p=>p.name),count:mates.length});}
   }
-  const teamStackScore=computeCumulativeTeamStacks(roster,byPos);
-  score+=teamStackScore;
-  // teamStackBonus kept as backward-compat alias (computeFlags CORELESS_STACK, buildStrengths)
-  Object.assign(detail,{teamStackScore,teamStackBonus:teamStackScore,teamStackDetails:tsDetails,stackedSkillPlayers:stackedSkill});
+  Object.assign(detail,{teamStackDetails:tsDetails,stackedSkillPlayers:stackedSkill});
+  // Legacy display fields — mechanisms removed, kept at 0/false for UI back-compat
+  // (GradeDisplay.jsx's Nerd Report reads these; follow-up: retire those rows).
+  Object.assign(detail,{qbTierBonus:0,topQbTier:null,teamStackScore:0,teamStackBonus:0,bothQbsStacked:false});
   if(stackedSkill>=4){achievements.push({id:'FOUR_PLUS_STACKED',label:'ELITE STACK DEPTH',icon:'⚡'}); feedback.push(`${stackedSkill} skill players stacked — top BBM VI teams averaged 4+ stacked skill players`);}
   else if(stackedSkill>=2) feedback.push(`${stackedSkill} skill players stacked — aim for 4+ (top team profile)`);
   else if(stackedSkill===0) feedback.push(`No team stacks — top BBM VI teams averaged 4+ stacked skill players`);
 
-  // STACK REALISM PATCH (Step 3): quality-weighted W17 game stack scoring.
-  // Rebuilt from WEEK17_GAMES + roster (Step 1 finding #2: w17GameStackDetails
-  // stores player-name strings only, so per-player round must come from roster).
-  // w17GameStackValue replaces the flat tier table; the qbInGame / bringBack
-  // quality factors define the per-game value.
-  const w17D=[], w17StackValues=[];
-  for(const g of WEEK17_GAMES){
-    const [t1,t2]=g.teams;
-    const a=roster.filter(p=>p.team===t1), b=roster.filter(p=>p.team===t2);
-    const tot=a.length+b.length, both=a.length>=1&&b.length>=1;
-    if(tot>=2){
-      const stackPlayers=[...a,...b];
-      const qbInGame=byPos.QB.some(qb=>qb.team&&(qb.team===t1||qb.team===t2));
-      const val=w17GameStackValue(g.tier,stackPlayers,qbInGame,both);
-      w17StackValues.push(val);
-      w17D.push({game:g.game,tier:g.tier,window:g.window,t1:a.map(p=>p.name),t2:b.map(p=>p.name),both,bonus:Math.round(val)});
-      if(both) achievements.push({id:`W17_${g.tier}`,label:`WEEK 17 ${g.tier}-TIER GAME STACK`,icon:'🎯'});
-    }
-  }
-  const W17_DR=[1.0,0.5,0.25,0.1];
-  const w17SortedDesc=[...w17StackValues].sort((a,b)=>b-a);
-  const w17=Math.min(w17SortedDesc.reduce((sum,v,i)=>sum+v*(W17_DR[i]??0.05),0),35);
-  score+=w17;
-  // w17StackTotal drives the Nerd Report W17 display; w17GameBonus kept as backward-compat alias
-  Object.assign(detail,{w17StackTotal:Math.round(w17),w17GameBonus:Math.round(w17),w17GameStackDetails:w17D});
+  const w17Res=computeWeekStack(WEEK17_GAMES,roster);
+  const w16Res=computeWeekStack(WEEK16_GAMES,roster);
+  const w15Res=computeWeekStack(WEEK15_GAMES,roster);
 
-  // Change 1: Both QBs must be in the SAME W17 game (prevents false positive when QBs are in different games)
-  let dualQBGameStack=false;
-  for(const g of WEEK17_GAMES){
-    const [t1,t2]=g.teams;
-    const hasQBt1=byPos.QB.some(qb=>qb.team===t1);
-    const hasQBt2=byPos.QB.some(qb=>qb.team===t2);
-    if(hasQBt1&&hasQBt2){
-      const t1Stacked=roster.some(p=>p.team===t1&&['WR','TE','RB'].includes(p.position));
-      const t2Stacked=roster.some(p=>p.team===t2&&['WR','TE','RB'].includes(p.position));
-      if(t1Stacked&&t2Stacked){dualQBGameStack=true; break;}
-    }
-  }
-  if(dualQBGameStack){score+=10; detail.bothQbsStacked=true; achievements.push({id:'BOTH_QBS_STACKED',label:'DUAL QB GAME STACK',icon:'🔥'}); feedback.push(`Both QBs game-stacked W17 — the $31.28 EV construct (highest EV QB structure per ETR Manifesto)`);}
-  else detail.bothQbsStacked=false;
+  for(const g of w17Res.details) if(g.both) achievements.push({id:`W17_${g.tier}`,label:`WEEK 17 ${g.tier}-TIER GAME STACK`,icon:'🎯'});
 
-  let w16=0; const w16D=[];
-  for(const g of WEEK16_GAMES){
-    const [t1,t2]=g.teams; const a=roster.filter(p=>p.team===t1),b=roster.filter(p=>p.team===t2);
-    const tot=a.length+b.length, both=a.length>=1&&b.length>=1;
-    if(tot>=2){const m=g.leverageMultiplier||1.0; let bo=g.tier==='S'?(both?12:8):g.tier==='A'?(both?9:6):g.tier==='B'?(both?6:4):(both?3:2); bo=Math.round(bo*m); w16+=bo; w16D.push({game:g.game,tier:g.tier,bonus:bo,both,window:g.window});}
-  }
-  w16=Math.min(w16,6); score+=w16; Object.assign(detail,{w16GameBonus:w16,w16StackDetails:w16D}); // Change 3: cap was 10
+  const stackComb=(w15Res.raw*STACK_WEEK_WEIGHTS[15]+w16Res.raw*STACK_WEEK_WEIGHTS[16]+w17Res.raw*STACK_WEEK_WEIGHTS[17])/STACK_TWW;
+  let score=Math.round(stackComb*STACK_SCALE+STACK_BASE);
+  score=Math.max(0,Math.min(100,score));
 
-  let w15=0; const w15D=[];
-  for(const g of WEEK15_GAMES){
-    const [t1,t2]=g.teams; const a=roster.filter(p=>p.team===t1),b=roster.filter(p=>p.team===t2);
-    const tot=a.length+b.length, both=a.length>=1&&b.length>=1;
-    if(tot>=2){const m=g.leverageMultiplier||1.0; let bo=g.tier==='S'?(both?8:5):g.tier==='A'?(both?6:4):g.tier==='B'?(both?4:2):(both?2:1); bo=Math.round(bo*m); w15+=bo; w15D.push({game:g.game,tier:g.tier,bonus:bo,both,window:g.window});}
-  }
-  w15=Math.min(w15,4); score+=w15; Object.assign(detail,{w15GameBonus:w15,w15StackDetails:w15D}); // Change 3: cap was 10
+  Object.assign(detail,{
+    w17StackTotal:Math.round(w17Res.raw), w17GameBonus:Math.round(w17Res.raw), w17GameStackDetails:w17Res.details,
+    w16GameBonus:Math.round(w16Res.raw), w16StackDetails:w16Res.details,
+    w15GameBonus:Math.round(w15Res.raw), w15StackDetails:w15Res.details,
+  });
 
-  if(w17D.length>0){const sorted=[...w17D].sort((a,b)=>b.bonus-a.bonus),top3=sorted.slice(0,3); feedback.push(`Top W17 stack${top3.length>1?'s':''}: ${top3.map(g=>`${g.game} [${g.tier}${g.both?' +bring-back':''}]`).join(' | ')}`);}
-  else{feedback.push(`No W17 game stack — biggest single EV lever. Top BBM VI teams had ≥1 W17 stack`); score-=10;}
-  if(w16>0) feedback.push(`Week 16 correlation — Leone BBM IV: W15/16 stacking actively underutilized by field`);
-  if(w15>0) feedback.push(`Week 15 correlation — quarterfinal stacking rarely intentional`);
-  // Round final score — quality-weighted W17 adds a float; all components must return an integer
-  score=Math.max(0,Math.min(100,Math.round(score)));
+  if(w17Res.details.length>0){const sorted=[...w17Res.details].sort((a,b)=>b.bonus-a.bonus),top3=sorted.slice(0,3); feedback.push(`Top W17 stack${top3.length>1?'s':''}: ${top3.map(g=>`${g.game} [${g.tier}${g.both?' +bring-back':''}]`).join(' | ')}`);}
+  else{feedback.push(`No W17 game stack — biggest single EV lever. Top BBM VI teams had ≥1 W17 stack`);}
+  if(w16Res.raw>0) feedback.push(`Week 16 correlation — Leone BBM IV: W15/16 stacking actively underutilized by field`);
+  if(w15Res.raw>0) feedback.push(`Week 15 correlation — quarterfinal stacking rarely intentional`);
+
   return {score,feedback,detail,achievements};
 }
 
-// ── BOOM BUST BALANCE (15%) ──
-// Floor (40%) = live player quality, RB1 timing, TE depth
-// Ceiling (60%) = W17 stack leverage (diminishing returns), QB tier
+// ── RISK (15%) — Phase 4 LOCKED: structurally identical to the Python model.
+// Per-week formula: risk_w = clip(60 + rb1Adj + teAdj + meaningfulAdj(w) + qbAdj(w), 0, 100),
+// combined via RISK_WEEK_WEIGHTS {15:1, 16:2, 17:4}. rb1Adj/teAdj are roster-level
+// (same every week); meaningfulAdj/qbAdj are per-week, from that week's real game
+// tiers. No floor/ceiling split — Python's Risk formula never had one.
+// REMOVED (not in the Python model — deferred/absent on both sides now, matching
+// elite-TE/dead-zone): dead-zone RB penalty, elite-TE bonus, BBM6-chalk penalty,
+// draft-date timing modifier, MEANINGFUL_W17_TEAMS-based live-player bonus, the
+// "no stack achievements" ceiling demerit. Feedback text tied to each was removed
+// too — keeping it would describe a penalty that no longer affects the score.
+const TIER_RANK = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+const RISK_WEEK_WEIGHTS = { 15: 1, 16: 2, 17: 4 }; // unchanged from the original default — Risk was not re-derived
+const RISK_TWW = RISK_WEEK_WEIGHTS[15] + RISK_WEEK_WEIGHTS[16] + RISK_WEEK_WEIGHTS[17];
+
+// Static roster model adaptation: JS rosters carry ONE fixed `team` per player
+// (no per-week team-by-week resolution like the Python/nflverse pipeline), so
+// "which tier game is this player's team in this week" uses the same static
+// team field for all 3 weeks. Python re-resolves each player's actual team per
+// week (handling real trades); this is the honest, unavoidable JS-side analog.
+function teamTierForWeek(games, team) {
+  for (const g of games) if (g.teams.includes(team)) return g.tier;
+  return null;
+}
+
+function computeWeekRisk(games, roster) {
+  let meaningful = 0, qbBestRank = 0;
+  for (const p of roster) {
+    const tier = teamTierForWeek(games, p.team);
+    if (!tier) continue;
+    const rank = TIER_RANK[tier] || 0;
+    if (rank >= TIER_RANK.C) meaningful++;
+    if (p.position === 'QB') qbBestRank = Math.max(qbBestRank, rank);
+  }
+  const meaningfulAdj = meaningful >= 14 ? 15 : meaningful >= 11 ? 8 : meaningful < 8 ? -10 : 0;
+  const qbAdj = qbBestRank >= TIER_RANK.A ? 8 : 0;
+  return { meaningful, qbBestRank, meaningfulAdj, qbAdj };
+}
+
 function scoreBoomBust(roster, stackAch, options){
   const byPos=getPos(roster), feedback=[], achievements=[];
 
-  // ── FLOOR SUB-SCORE ──
-  let floorBase=60, floorPenalties=0, floorBonuses=0;
-
-  // RB1 round — live floor anchor
+  // Roster-level adjustments (identical across all 3 weeks)
   const rbsSorted=[...byPos.RB].sort((a,b)=>a.round-b.round);
   const rb1Round=rbsSorted.length>0?rbsSorted[0].round:99;
-  if(rb1Round>9){floorPenalties+=25; feedback.push(`RB1 R${rb1Round} — Winks 5-yr: RB1 past R9 catastrophic all 5 seasons`);}
-  else if(rb1Round>7){floorPenalties+=15; feedback.push(`RB1 R${rb1Round} — Winks hard cutoff R7; later hurt advance all 5 seasons`);}
-  else if(rb1Round<=3){floorBonuses+=8; feedback.push(`Elite RB1 R${rb1Round} — bell-cow upside secured early`);}
+  const rb1Adj = rb1Round>9?-25:rb1Round>7?-15:rb1Round<=3?8:0;
+  const teAdj = byPos.TE.length===1?-10:0;
 
-  // Dead zone RBs
-  const dz=byPos.RB.filter(p=>DEAD_ZONE_RBS.includes(p.name)&&p.round>=4&&p.round<=8);
-  if(dz.length>0){floorPenalties+=dz.length*8; feedback.push(`Dead zone RB: ${dz.map(p=>p.name).join(', ')} — overpriced mid-round per 2026 meta`);}
+  if(rb1Round>9) feedback.push(`RB1 R${rb1Round} — Winks 5-yr: RB1 past R9 catastrophic all 5 seasons`);
+  else if(rb1Round>7) feedback.push(`RB1 R${rb1Round} — Winks hard cutoff R7; later hurt advance all 5 seasons`);
+  else if(rb1Round<=3) feedback.push(`Elite RB1 R${rb1Round} — bell-cow upside secured early`);
+  if(byPos.TE.length===1) feedback.push(`1-TE — live player and injury/turnover exposure.`);
 
-  // Elite TE — floor and ceiling contribution
-  const eTE=byPos.TE.filter(p=>ELITE_TES.includes(p.name));
-  if(eTE.length>0){
-    floorBonuses+=10;
-    feedback.push(`Elite TE: ${eTE.map(p=>p.name).join(', ')} — elite TE upside secured. Live ceiling elevated.`);
-    achievements.push({id:'ELITE_TE',label:'ELITE TE SECURED',icon:'✦'});
-  }
-  if(byPos.TE.length===1){
-    floorPenalties+=10;
-    feedback.push(`1-TE — live player and injury/turnover exposure. Construction data shows +1.67pp expected outcome for 1-TE on average, but this penalty is for live risk specifically.`);
-    if(eTE.length>0) feedback.push(`Elite 1-TE (Sherman pattern) — elite TE in a 1-TE build captures the construction upside (+1.67pp) while concentrating on a high-ceiling player. Live risk applies but the expected outcome is positive.`);
-  }
+  const w17r=computeWeekRisk(WEEK17_GAMES,roster);
+  const w16r=computeWeekRisk(WEEK16_GAMES,roster);
+  const w15r=computeWeekRisk(WEEK15_GAMES,roster);
 
-  // Live players in meaningful W17 games
-  const meaningful=roster.filter(p=>MEANINGFUL_W17_TEAMS.includes(p.team)).length;
-  if(meaningful>=14){floorBonuses+=15; feedback.push(`${meaningful} players in meaningful W17 games — live ceiling elevated`); achievements.push({id:'LIVE_PLAYERS',label:'HIGH LIVE PLAYER POTENTIAL',icon:'🔋'});}
-  else if(meaningful>=11){floorBonuses+=8; feedback.push(`${meaningful} players in meaningful W17 teams — solid live base`);}
-  else if(meaningful<8){floorPenalties+=10; feedback.push(`Only ${meaningful} players in meaningful W17 teams — live player risk`);}
+  const weekRiskScore=(wr)=>Math.max(0,Math.min(100,60+rb1Adj+teAdj+wr.meaningfulAdj+wr.qbAdj));
+  const risk15=weekRiskScore(w15r), risk16=weekRiskScore(w16r), risk17=weekRiskScore(w17r);
 
-  // BBM VI chalk (differentiation flag — floor concern)
-  // Change 3: Simplified chalk alert — max 2 players shown, "+ N more" suffix
-  const chalk=roster.filter(p=>BBM6_HIGH_OWNERSHIP[p.name]&&BBM6_HIGH_OWNERSHIP[p.name]>=40);
-  if(chalk.length>=3){
-    const sortedChalk=[...chalk].sort((a,b)=>BBM6_HIGH_OWNERSHIP[b.name]-BBM6_HIGH_OWNERSHIP[a.name]);
-    const top2=sortedChalk.slice(0,2);
-    const rest=sortedChalk.length-2;
-    const suffix=rest>0?` +${rest} more`:'';
-    feedback.push(`High chalk: ${top2.map(p=>`${p.name} (${BBM6_HIGH_OWNERSHIP[p.name]}%)`).join(', ')}${suffix} — prior-year chalk ownership doesn't transfer. Their 2026 ADP has already corrected.`);
-  }
+  const riskComb=(risk15*RISK_WEEK_WEIGHTS[15]+risk16*RISK_WEEK_WEIGHTS[16]+risk17*RISK_WEEK_WEIGHTS[17])/RISK_TWW;
+  const score=Math.max(0,Math.min(100,Math.round(riskComb)));
 
-  // Draft timing modifier — live-player attrition risk
-  if(options&&options.draftDate){
-    const m=new Date(options.draftDate).getMonth()+1;
-    if(m>=4&&m<=5){floorPenalties+=5; feedback.push(`Early draft (${['','Jan','Feb','Mar','Apr','May','Jun'][m]}) — April/May drafts carry elevated live-player attrition risk (~52% fewer live players vs August per multi-year BBM data).`);}
-    else if(m===6){floorPenalties+=3; feedback.push(`June draft — modest early-draft penalty. Live player retention improves heading into July/August peak window.`);}
-    else if(m===7||m===8) feedback.push(`${m===7?'July':'August'} draft — optimal window for live player retention. ADP has stabilized and injury risk is lower than spring.`);
-    else if(m>=9) feedback.push(`Late draft — closing-line ADP is more predictive of final value, but live player attrition benefit is partially offset by reduced ADP inefficiency in the market.`);
-  }
+  if(w17r.meaningful>=14) feedback.push(`${w17r.meaningful} players in meaningful W17 games — live ceiling elevated`);
+  else if(w17r.meaningful>=11) feedback.push(`${w17r.meaningful} players in meaningful W17 teams — solid live base`);
+  else if(w17r.meaningful<8) feedback.push(`Only ${w17r.meaningful} players in meaningful W17 teams — live player risk`);
 
-  const floorScore=Math.max(0,Math.min(100,floorBase-floorPenalties+floorBonuses));
-
-  // ── CEILING SUB-SCORE ──
-  let ceilingBase=40;
-
-  // STACK REALISM PATCH (Step 5): quality-weighted W17 ceiling — mirrors the
-  // Stack component so BBB ceiling reflects real stack quality, not flat tiers.
-  const BBB_DR=[1.0,0.5,0.25,0.1];
-  const bbbW17Vals=[];
-  for(const g of WEEK17_GAMES){
-    const [t1,t2]=g.teams;
-    const a=roster.filter(p=>p.team===t1), b=roster.filter(p=>p.team===t2);
-    const tot=a.length+b.length, both=a.length>=1&&b.length>=1;
-    if(tot>=2){
-      const stackPlayers=[...a,...b];
-      const qbInGame=byPos.QB.some(qb=>qb.team&&(qb.team===t1||qb.team===t2));
-      bbbW17Vals.push(w17GameStackValue(g.tier,stackPlayers,qbInGame,both));
-    }
-  }
-  bbbW17Vals.sort((a,b)=>b-a);
-  const bbbW17DR=bbbW17Vals.reduce((sum,v,i)=>sum+v*(BBB_DR[i]??BBB_DR[BBB_DR.length-1]),0);
-  ceilingBase+=Math.min(Math.round(bbbW17DR),35);
-
-  // STACK REALISM PATCH (Step 5): team-stack quality into ceiling, replacing the
-  // old elite-QB-only bonus. Scaled 0.5 (max ~13) to keep the ceiling within its
-  // historical band — the old bonus capped at 8. DEVIATION: scaling is an
-  // adaptation; spec said "replace … with computeCumulativeTeamStacks" but the
-  // raw 0-26 range would inflate a base-40 ceiling. Flagged in report.
-  const bbbTeamStack=computeCumulativeTeamStacks(roster,byPos);
-  ceilingBase+=Math.round(bbbTeamStack*0.5);
-
-  // No stack achievements = ceiling demerit
-  if(!stackAch||stackAch.length===0) ceilingBase-=5;
-
-  const ceilingScore=Math.max(0,Math.min(100,Math.round(ceilingBase)));
-
-  // BBB = 40% floor + 60% ceiling
-  const score=Math.max(0,Math.min(100,Math.round(floorScore*0.40+ceilingScore*0.60)));
-
+  // floorScore/ceilingScore/bbbLabel: Python's Risk has no floor/ceiling split —
+  // it's one unified per-week number. Kept as duplicate aliases of the same
+  // score (not independently meaningful anymore) purely so GradeDisplay.jsx's
+  // BBBDetail component keeps rendering numbers instead of blank dashes.
+  // FLAGGED, not silently resolved: see Phase 6 report for the real tradeoff —
+  // showing "Floor: X / Ceiling: X" with identical values is a stale UI concept
+  // that should be revisited in GradeDisplay.jsx (out of scope for this pass).
+  const floorScore=score, ceilingScore=score;
   const label=score>=80?'Well-Balanced':score>=65?'Boom-Leaning':score>=50?'High Variance':'Extreme Variance';
 
   return {score,floorScore,ceilingScore,label,feedback,achievements};
@@ -600,7 +491,12 @@ function scoreBoomBust(roster, stackAch, options){
 
 function getPos(r){return {QB:r.filter(p=>p.position==='QB'),RB:r.filter(p=>p.position==='RB'),WR:r.filter(p=>p.position==='WR'),TE:r.filter(p=>p.position==='TE')};}
 function getRounds(r){return {r6:r.filter(p=>p.round<=6),r10:r.filter(p=>p.round<=10),r12:r.filter(p=>p.round<=12),r18:r};}
-function getCapital(r){const m={};let t=0;for(const p of r){const c=Math.max(0,19-p.round);t+=c;m[p.position]=(m[p.position]||0)+c;}const o={};for(const pos of ['QB','RB','WR','TE'])o[pos]=t>0?Math.round((m[pos]||0)/t*1000)/10:0;return o;}
+// Rounds capital% to 2 decimals (was 1) to match the Python model exactly —
+// 1-decimal rounding could flip a quartile bucket at a knife-edge boundary
+// (e.g. true 46.795% -> JS rounded to 46.8, tipping over a 46.8 threshold that
+// Python's 46.78 stayed under), causing up to ~16pt Value swings. Diagnosed
+// during the Phase 6 scale-parity check.
+function getCapital(r){const m={};let t=0;for(const p of r){const c=Math.max(0,19-p.round);t+=c;m[p.position]=(m[p.position]||0)+c;}const o={};for(const pos of ['QB','RB','WR','TE'])o[pos]=t>0?Math.round((m[pos]||0)/t*10000)/100:0;return o;}
 function buildBBM6Context(r){return {highOwnershipPlayers:r.filter(p=>BBM6_HIGH_OWNERSHIP[p.name]).map(p=>({name:p.name,ownership:BBM6_HIGH_OWNERSHIP[p.name]}))};}
 
 // ── PICK NUMBER DEVIATION ──
