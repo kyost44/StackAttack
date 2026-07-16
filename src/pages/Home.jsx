@@ -9,6 +9,7 @@ import RosterInput from '../components/RosterInput';
 import GradeDisplay from '../components/GradeDisplay';
 import AnalysisLoader from '../components/AnalysisLoader';
 import RosterSummary from '../components/RosterSummary';
+import CutoverNotice from '../components/CutoverNotice';
 import { gradeTeam } from '../engine/scoringEngine';
 
 export default function Home() {
@@ -58,11 +59,13 @@ export default function Home() {
               BBM7 / 2026
             </span>
             <span className="text-xs text-slate-500">
-              1.6M teams calibrated
+              2.63M real drafts · 5 seasons
             </span>
           </div>
         </div>
       </header>
+
+      <CutoverNotice />
 
       {/* Hero */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-4">
@@ -75,7 +78,30 @@ export default function Home() {
           </h1>
           <p className="text-slate-400 text-base max-w-2xl mx-auto">
             Enter your 18-round BBM7 draft picks and get a data-driven letter grade.
-            Calibrated from advance-rate analysis of 1.6 million BBM V+VI rosters.
+            Built on 2,629,295 real BBM rosters across five seasons — and validated on a season the model never saw.
+          </p>
+        </div>
+
+        {/* Credibility strip */}
+        <div style={{ marginBottom: '32px' }}>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-10 text-center">
+            {[
+              { big: '2.49x', caption: "A-graded rosters reached the finals at 2.49x the field's rate" },
+              { big: '2x', caption: 'Top-10% scores advanced at double the bottom-10%' },
+              { big: '5 seasons', caption: 'Validated out-of-sample on a season the model never saw' },
+            ].map((stat) => (
+              <div key={stat.big} style={{ maxWidth: '220px' }}>
+                <div style={{ color: 'var(--color-orange)', fontSize: '24px', fontWeight: 800, lineHeight: 1.1 }}>
+                  {stat.big}
+                </div>
+                <div className="text-slate-400" style={{ fontSize: '12px', marginTop: '4px', lineHeight: 1.4 }}>
+                  {stat.caption}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-slate-600" style={{ fontSize: '11px', marginTop: '14px' }}>
+            Population-level advance rates from 2.63M historical rosters — no tool can predict champions.
           </p>
         </div>
 
@@ -108,14 +134,14 @@ export default function Home() {
               color: 'var(--color-text-light)',
             }}>
               <div style={{ fontWeight: 600, color: 'var(--color-cream)', marginBottom: '8px' }}>
-                Four components, 1.6M drafts of calibration
+                Four components, five seasons of evidence
               </div>
               <div>Construction (30%) — positional distribution and round allocation</div>
               <div>Value (30%) — ADP efficiency and capital discipline</div>
               <div>Stack (25%) — Week 17 game stacks and team correlation (diminishing returns)</div>
-              <div>Boom Bust Balance (15%) — floor quality and ceiling potential</div>
+              <div>Boom Bust Balance (15%) — floor quality and meaningful Week 17 players</div>
               <div style={{ marginTop: '10px', color: 'var(--color-text-light)', fontSize: '12px', opacity: 0.7 }}>
-                Calibrated from BBM V + VI (2024–2025 seasons) · Weighted 60% BBM VI / 40% BBM V · Recalibrated annually.
+                Trained on BBM II–V (2021–2024) · Validated out-of-sample on BBM VI (2025) · Recalibrated annually.
               </div>
             </div>
           </details>
@@ -156,7 +182,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-slate-800 mt-8 py-6 text-center">
         <p className="text-slate-600 text-xs">
-          Stackulator · Calibrated from BBM V + VI (2024–2025) ·
+          Stackulator · Built on 5 seasons of BBM data (2021–2025) ·
           Not affiliated with Underdog Fantasy
         </p>
       </footer>

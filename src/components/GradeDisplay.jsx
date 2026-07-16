@@ -664,7 +664,7 @@ export default function GradeDisplay({ result, roster = [], onReset }) {
           <span className="text-slate-500 text-sm font-normal">/100</span>
         </div>
         <p className="text-slate-500 text-xs">
-          BBM V+VI calibrated · 1.6M teams · 1,078 finalists
+          BBM II–VI calibrated · 2.63M teams · 2,149 finalists
         </p>
         {gradeConfidence && (
           <span className="mt-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700"
@@ -701,7 +701,7 @@ export default function GradeDisplay({ result, roster = [], onReset }) {
             <span className="text-slate-500 text-sm font-normal">/100</span>
           </div>
           <p className="text-slate-500 text-xs mt-0.5">
-            BBM V+VI calibrated · 1.6M teams · 1,078 finalists
+            BBM II–VI calibrated · 2.63M teams · 2,149 finalists
           </p>
           {gradeConfidence && (
             <span className="mt-1 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700"
@@ -1065,8 +1065,8 @@ export default function GradeDisplay({ result, roster = [], onReset }) {
       {/* Data source legend */}
       <div className="border border-slate-800 rounded-lg px-4 py-3 text-xs text-slate-600 space-y-0.5">
         <p className="text-slate-500 font-semibold mb-1">Data Sources</p>
-        <p>Calibrated from BBM V + VI (2024–2025) · 1,078 finalist rosters · 1.6M total entries</p>
-        <p>Score weights: 60% BBM VI / 40% BBM V · Recalibrated annually</p>
+        <p>Trained on BBM II–V (2021–2024) · 2,149 finalist rosters · 2.63M total entries across 5 seasons</p>
+        <p>Validated out-of-sample on BBM VI (2025) · Recalibrated annually</p>
         <p>Not affiliated with Underdog Fantasy</p>
       </div>
     </div>
